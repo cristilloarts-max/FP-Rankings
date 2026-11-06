@@ -954,6 +954,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .fixed.lost{color:var(--red)}
   .was{color:var(--muted)}
   .note .lnk{background:none;border:0;padding:0;font-weight:700;text-decoration:underline;text-underline-offset:3px}
+  .tsum em.dl{display:block;font-style:normal;font-size:12px;font-weight:700;margin-top:6px;color:var(--muted)}
+  .tsum em.dl.up{color:var(--blue)} .tsum em.dl.down{color:var(--red)}
   [hidden]{display:none !important}
 
   @media (min-width:900px){
@@ -1853,7 +1855,8 @@ function conceptHTML(Lcur) {
   const nm = ids => ids.map(id => P.get(id)).filter(Boolean).map(p => `<button class="lnk" data-pid="${p.id}">${esc(p.name)}</button>`).join(", ") || "nobody";
   const trades = concept.map((t, i) => `<div class="ctrade"><div class="ct-body"><div><span class="ct-l">Give</span>${nm(t.give)}</div><div><span class="ct-l">Get</span>${nm(t.get)}</div></div>
     <button class="rm" data-crm="${i}" aria-label="Remove this trade">✕</button></div>`).join("");
-  const row = (label, a, b, f) => `<tr><td>${label}</td><td>${f(a)}</td><td>${f(b)}</td><td class="${b - a > 0.5 ? "up" : b - a < -0.5 ? "down" : ""}">${sgn(b - a, f)}</td></tr>`;
+  const row = (label, a, b, f) => { const d = f === f0 ? Math.round(b) - Math.round(a) : b - a;
+    return `<tr><td>${label}</td><td>${f(a)}</td><td>${f(b)}</td><td class="${d > 0.5 ? "up" : d < -0.5 ? "down" : ""}">${sgn(d, f)}</td></tr>`; };
   const shape = Object.keys(C.slots).map(gp => {
     const a = groupAvg(Lcur, gp), b = groupAvg(Lc, gp), lg = LG[gp] || 0;
     const max = Math.max(LG[gp + "Max"] || 1, a, b, lg * 1.4);
@@ -1873,12 +1876,18 @@ function conceptHTML(Lcur) {
   const n = K.active.length, over = n - ROSTER_MAX;
   const drops = over > 0 ? Lc.bench.slice().sort((a, b) => tval(a) - tval(b) || projTG(a) - projTG(b)).slice(0, over) : [];
   const leaving = [...K.outgoing].map(id => P.get(id)).filter(Boolean);
+  const delta = d => `<em class="dl ${d >= 0.5 ? "up" : d <= -0.5 ? "down" : ""}">${Math.abs(d) < 0.5 ? "same as now" : `${sgn(d, f0)} vs now`}</em>`;
   const verdictCls = m1.vor - m0.vor > 5 ? "win" : m1.vor - m0.vor < -5 ? "lose" : "";
   return `
     <h2 class="sub2">Trades in this concept <span class="cnt">${concept.length}</span></h2>
     <div class="ctrades">${trades}</div>
+    <div class="tsum">
+      <div><b>${f0(m1.week)}</b><span>points in a typical week</span>${delta(Math.round(m1.week) - Math.round(m0.week))}</div>
+      <div><b>${f0(SLOTS.reduce((s, sl) => s + (LG[sl] || 0), 0) * GPW)}</b><span>typical team in your league</span></div>
+      <div><b>${f0(m1.focus)}</b><span>${nxtFocus() ? "projected next week" : "left this week"}</span>${delta(Math.round(m1.focus) - Math.round(m0.focus))}</div>
+    </div>
     <div class="verdict" style="margin-top:14px">
-      <div class="vh ${verdictCls}" style="margin-top:0">${m1.vor - m0.vor > 5 ? `Better by ${f0(m1.vor - m0.vor)} points` : m1.vor - m0.vor < -5 ? `Worse by ${f0(m0.vor - m1.vor)} points` : "About the same"}</div>
+      <div class="vh ${verdictCls}" style="margin-top:0">${m1.vor - m0.vor > 5 ? `Better by ${Math.round(m1.vor) - Math.round(m0.vor)} points` : m1.vor - m0.vor < -5 ? `Worse by ${Math.round(m0.vor) - Math.round(m1.vor)} points` : "About the same"}</div>
       <p class="vs">Value your starting lineup adds over free agents for the rest of the season, now versus with these trades.</p>
       <table class="dt"><thead><tr><th></th><th>Now</th><th>Concept</th><th>Change</th></tr></thead><tbody>
         ${row("Points in a typical week", m0.week, m1.week, f0)}
