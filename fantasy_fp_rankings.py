@@ -627,275 +627,274 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b0f17">
+<meta name="theme-color" content="#F2F6F9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0C1626" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="FP Hockey">
 <title>FP Hockey</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100,400;100,500;100,600;100,700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&display=swap">
 <style>
   :root{
-    --bg:#0b0f17; --panel:#121826; --panel2:#182033; --line:#243049; --line2:#1a2236;
-    --text:#e8eef9; --muted:#8a97b0; --ice:#cfe3ff;
-    --scoring:#4da3ff; --peri:#ffb547; --good:#3ddc97; --bad:#ff6b6b;
+    --ice:#F2F6F9; --surface:#FFFFFF; --ink:#0F1E33; --muted:#5D6D83; --faint:#93A1B4; --line:#DCE4EC;
+    --blue:#1F5FD1; --blue-soft:#E3ECFB; --red:#D7263D; --red-soft:#FBE6E9; --gold:#E0A100;
+    --heat0:#E9EEF3; --heat1:#D6E2F4; --heat2:#A9C3EE; --heat3:#5F8FE0; --heat4:#1F5FD1;
+    --shadow:0 18px 40px rgba(15,30,51,.18);
+    --display:"Big Shoulders Display","Big Shoulders","Barlow Condensed","Arial Narrow",sans-serif;
+    --body:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --ice:#0C1626; --surface:#13213A; --ink:#E9F0F8; --muted:#97A6BC; --faint:#64748B; --line:#22324D;
+      --blue:#5B8EF0; --blue-soft:#1A2D52; --red:#F0525F; --red-soft:#3A1C27; --gold:#F2BE3A;
+      --heat0:#16243D; --heat1:#1B3159; --heat2:#25467F; --heat3:#3767BE; --heat4:#5B8EF0;
+      --shadow:0 18px 40px rgba(0,0,0,.5);
+    }
   }
   *{box-sizing:border-box}
   html{-webkit-text-size-adjust:100%}
-  body{margin:0;background:var(--bg);color:var(--text);
-    font:14px/1.45 "Inter","Segoe UI",system-ui,-apple-system,sans-serif}
-  button{font:inherit;color:inherit}
-  header{padding:22px 32px 14px;background:linear-gradient(180deg,#111a2b 0%,var(--bg) 100%)}
-  .eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
-  h1{margin:2px 0 4px;font-size:26px;font-weight:800;letter-spacing:-.02em}
-  h1 span{color:var(--scoring)}
-  .meta{color:var(--muted);font-size:12px}
-  nav.tabs{display:flex;gap:4px;padding:8px 32px 0;border-bottom:1px solid var(--line)}
-  nav.tabs button{background:none;border:none;color:var(--muted);font-weight:700;
-    padding:10px 16px;border-radius:10px 10px 0 0;cursor:pointer;font-size:14px}
-  nav.tabs button.active{background:var(--panel);color:var(--text)}
-  main{padding:18px 32px 60px}
-  section[hidden]{display:none}
-  h2{font-size:18px;margin:0 0 4px}
-  .lede{color:var(--muted);font-size:13px;margin:0 0 16px;max-width:760px}
+  body{margin:0;background:var(--ice);color:var(--ink);font:15px/1.5 var(--body);
+    padding-bottom:calc(76px + env(safe-area-inset-bottom))}
+  button,input,select{font:inherit;color:inherit}
+  button{cursor:pointer}
+  :focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:6px}
+  .wrap{max-width:760px;margin:0 auto;padding:0 18px}
 
-  /* cards */
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
-  .card{background:var(--panel);border:1px solid var(--line2);border-radius:14px;padding:14px 14px 8px}
-  .card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
-  .card .desc{color:var(--muted);font-size:12px;margin:3px 0 10px}
-  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
-  .prow{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line2)}
-  .prow .pn{flex:1;min-width:0}
-  .prow .pn b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .prow .pn span{font-size:11px;color:var(--muted)}
-  .prow .pv{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-  .prow .pv small{display:block;color:var(--muted);font-size:11px}
-  .add{flex:none;width:30px;height:30px;border-radius:8px;border:1px solid var(--line);
-    background:var(--panel2);color:var(--ice);cursor:pointer;font-weight:700}
-  .add:active{background:var(--scoring);color:#06101f}
-  .empty{color:var(--muted);font-size:12px;padding:10px 0;border-top:1px solid var(--line2)}
-  .sgrp{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-top:1px solid var(--line2)}
-  .sn{flex:none;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-weight:800;
-    background:var(--panel2);font-size:16px}
-  .sn.hi{background:#0f3a2a;color:var(--good)} .sn.lo{background:#3a1717;color:var(--bad)}
-  .st{display:flex;flex-wrap:wrap;gap:5px;padding-top:5px}
-  .team{font-size:11px;font-weight:700;padding:2px 6px;border-radius:5px;background:var(--panel2);color:var(--ice)}
-  .up{color:var(--good);font-weight:700} .down{color:var(--bad);font-weight:700}
-  .muted{color:var(--muted)}
+  /* top bar */
+  .top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+    padding:calc(14px + env(safe-area-inset-top)) 18px 6px;max-width:760px;margin:0 auto}
+  .brand{font:800 22px/1 var(--display);letter-spacing:.01em}
+  .brand i{font-style:normal;color:var(--red)}
+  .upd{font-size:12px;color:var(--muted)}
+
+  /* bottom nav (top on wide screens) */
+  nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;justify-content:center;
+    background:color-mix(in srgb,var(--surface) 94%,transparent);backdrop-filter:blur(12px);
+    border-top:1px solid var(--line);padding:4px 4px calc(4px + env(safe-area-inset-bottom))}
+  nav.tabs button{flex:1;max-width:120px;background:none;border:0;padding:6px 0 4px;display:flex;flex-direction:column;
+    align-items:center;gap:2px;font-size:11px;font-weight:600;color:var(--faint)}
+  nav.tabs svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  nav.tabs button[aria-current="page"]{color:var(--blue)}
+
+  /* type */
+  h1{font:800 44px/1 var(--display);margin:14px 0 6px;letter-spacing:.005em}
+  h2{font:700 24px/1.1 var(--display);margin:0;letter-spacing:.01em}
+  .intro{color:var(--muted);margin:0 0 18px;max-width:60ch}
+  .hint{color:var(--muted);font-size:13px;margin:4px 0 10px;max-width:60ch}
+
+  /* sections divided by rink lines */
+  .block{padding:18px 0 14px;border-top:2px solid var(--line)}
+  .block.redline{border-top-color:var(--red)}
+  .block.blueline{border-top-color:var(--blue)}
+  .bh{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+
+  /* briefing */
+  .brief{list-style:none;margin:0 0 22px;padding:0;display:grid;gap:10px}
+  .brief li{background:var(--surface);border-radius:14px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start}
+  .brief .ic{flex:none;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font:800 15px/1 var(--display)}
+  .brief .ic.b{background:var(--blue-soft);color:var(--blue)} .brief .ic.r{background:var(--red-soft);color:var(--red)}
+  .brief .ic.g{background:color-mix(in srgb,var(--gold) 22%,transparent);color:var(--gold)}
+  .brief button.lnk{background:none;border:0;padding:0;font-weight:700;color:var(--ink);text-decoration:underline;
+    text-decoration-color:var(--faint);text-underline-offset:3px}
+
+  /* segmented */
+  .seg{display:inline-flex;background:var(--heat0);border-radius:10px;padding:3px}
+  .seg button{border:0;background:none;padding:6px 12px;border-radius:8px;font-size:13px;font-weight:600;color:var(--muted)}
+  .seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(15,30,51,.15)}
+  .seg.full{display:flex} .seg.full button{flex:1}
+
+  /* schedule heat grid */
+  .teamgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(68px,1fr));gap:6px;margin-top:6px}
+  .tile{border-radius:10px;padding:7px 8px 6px;display:flex;justify-content:space-between;align-items:baseline;background:var(--heat0)}
+  .tile b{font:800 26px/1 var(--display)}
+  .tile span{font-size:11px;font-weight:700;letter-spacing:.02em}
+  .tile.h1{background:var(--heat1)} .tile.h2{background:var(--heat2)}
+  .tile.h3{background:var(--heat3);color:#fff} .tile.h4{background:var(--heat4);color:#fff}
+  .tile.h0{color:var(--faint)}
+  .scale{display:flex;gap:10px;align-items:center;font-size:12px;color:var(--muted);margin-top:10px}
+  .scale i{display:inline-block;width:14px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+
+  /* player rows */
+  .list{background:var(--surface);border-radius:16px;overflow:hidden}
+  .row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:none;border:0;
+    padding:11px 14px;border-top:1px solid var(--line)}
+  .row:first-child{border-top:0}
+  .row:active{background:var(--heat0)}
+  .rk{flex:none;width:30px;font:700 20px/1 var(--display);color:var(--faint);text-align:right}
+  .who{flex:1;min-width:0}
+  .who b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .meta{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted);margin-top:1px}
+  .tm{font-size:10.5px;font-weight:700;letter-spacing:.03em;padding:1px 5px;border-radius:4px;background:var(--heat0);color:var(--ink)}
+  .val{text-align:right;flex:none}
+  .val b{display:block;font:800 24px/1 var(--display)}
+  .val small{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
+  .val .up{color:var(--red)} .val .dn{color:var(--blue)}
+  .more{display:block;width:100%;margin-top:8px;background:none;border:0;padding:10px;font-weight:600;color:var(--blue);font-size:14px}
+  .empty{padding:16px 14px;color:var(--muted);font-size:14px}
+
+  .split{display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--heat0);width:72px;margin:5px 0 0 auto}
+  .split .s{background:var(--blue)} .split .p{background:var(--gold)}
 
   /* controls */
-  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
-  input[type=search]{background:var(--panel2);border:1px solid var(--line);color:var(--text);
-    border-radius:9px;padding:9px 12px;font:inherit;min-width:220px;outline:none}
-  input[type=search]:focus{border-color:var(--scoring)}
-  .seg{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:9px;overflow:hidden}
-  .seg button{background:none;border:none;color:var(--muted);font-weight:600;padding:8px 13px;cursor:pointer}
-  .seg button.active{background:var(--scoring);color:#06101f}
-  .legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-left:auto}
-  .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+  .controls{display:flex;flex-direction:column;gap:10px;margin:4px 0 12px}
+  .search{position:relative}
+  .search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:18px;height:18px;stroke:var(--faint);fill:none;stroke-width:2}
+  .search input{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:11px 12px 11px 38px;font-size:16px;outline:none}
+  .search input:focus{border-color:var(--blue)}
+  .chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+  .chips::-webkit-scrollbar{display:none}
+  .chip{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 13px;font-size:13px;font-weight:600;color:var(--muted)}
+  .chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--ice)}
+  .sortrow{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;color:var(--muted)}
+  select{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:7px 10px;font-size:14px;font-weight:600}
 
-  /* tables */
-  .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
-  table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
-  th{background:var(--bg);text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.05em;
-    color:var(--muted);padding:8px 8px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap;user-select:none}
-  th.l,td.l{text-align:left}
-  th.sorted{color:var(--text)}
-  th.sorted::after{content:" \25BE"} th.sorted.asc::after{content:" \25B4"}
-  td{padding:7px 8px;border-bottom:1px solid var(--line2);text-align:right;white-space:nowrap}
-  tbody tr:hover td{background:#16203a}
-  td.name{font-weight:700;cursor:pointer}
-  td.name:hover{color:var(--scoring)}
-  td.fpg{font-weight:800;color:var(--ice)}
-  .sub{display:none;font-weight:400;font-size:11px;color:var(--muted)}
-  .pos{display:inline-block;min-width:28px;text-align:center;font-size:11px;font-weight:700;
-    border-radius:4px;padding:1px 5px;background:var(--panel2);color:var(--ice)}
-  .pos.D{background:#3a2a10;color:var(--peri)} .pos.G{background:#2a1a3a;color:#d4a7ff}
-  .bar{display:flex;height:10px;width:130px;background:#0e1422;border-radius:3px;overflow:hidden}
-  .bar .s{background:var(--scoring)} .bar .p{background:var(--peri)}
-  .hv{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-  .hv h3{margin:4px 0 2px;font-size:15px}
-  .hv p{margin:0 0 10px;color:var(--muted);font-size:12px}
-  .note{color:var(--muted);font-size:12px;margin-top:12px}
-
-  /* picker */
-  .picker{position:relative}
-  .picker input{width:100%}
-  .sugg{position:absolute;z-index:20;left:0;right:0;top:calc(100% + 4px);background:var(--panel2);
-    border:1px solid var(--line);border-radius:10px;overflow:hidden;box-shadow:0 12px 30px rgba(0,0,0,.5)}
-  .sugg button{display:block;width:100%;text-align:left;background:none;border:none;border-bottom:1px solid var(--line2);
-    padding:9px 12px;cursor:pointer}
-  .sugg button:hover,.sugg button:active{background:#22304d}
-  .sugg button span{display:block;font-size:11px;color:var(--muted)}
-  .sugg .none{padding:10px 12px;color:var(--muted)}
+  /* suggestions */
+  .sugg{position:absolute;z-index:25;left:0;right:0;top:calc(100% + 6px);background:var(--surface);border-radius:14px;
+    box-shadow:var(--shadow);overflow:hidden}
+  .sugg .row{padding:10px 14px}
 
   /* compare */
-  .cmpwrap{max-width:900px}
-  .cmp th{text-align:center;cursor:default;vertical-align:bottom;background:var(--panel);text-transform:none;letter-spacing:0;
-    font-size:13px;color:var(--text);padding:10px 8px}
-  .cmp th:first-child,.cmp td:first-child{text-align:left;color:var(--muted);font-size:12px;white-space:normal;min-width:120px}
-  .cmp td{text-align:center}
-  .cmp td.best{color:var(--good);font-weight:800}
-  .cmp .ph b{display:block}
-  .cmp .ph span{display:block;font-size:11px;color:var(--muted);font-weight:400}
-  .mini{display:flex;gap:4px;justify-content:center;margin-top:6px}
-  .mini button{border:1px solid var(--line);background:var(--panel2);border-radius:6px;padding:2px 7px;font-size:11px;cursor:pointer}
-  .mini button.x{color:var(--bad)}
-  .cmp .bar{margin:0 auto;width:90px}
+  .chead,.mv{display:grid;gap:8px}
+  .chead{margin:6px 0 4px}
+  .pcol{background:var(--surface);border-radius:14px;padding:10px 10px 8px;position:relative;min-width:0}
+  .pcol b{display:block;font:700 19px/1.05 var(--display);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .pcol .meta{margin-top:5px}
+  .pcol .x{position:absolute;top:6px;right:6px;border:0;background:none;color:var(--faint);font-size:16px;line-height:1;padding:4px}
+  .mgroup{margin-top:18px}
+  .mgroup h3{font:700 18px/1 var(--display);margin:0 0 6px;color:var(--muted)}
+  .mrow{background:var(--surface);padding:10px 12px 12px;border-top:1px solid var(--line)}
+  .mgroup .mrow:first-of-type{border-radius:14px 14px 0 0;border-top:0}
+  .mgroup .mrow:last-child{border-radius:0 0 14px 14px}
+  .mgroup .mrow:only-of-type{border-radius:14px}
+  .ml{font-size:12.5px;color:var(--muted);margin-bottom:5px}
+  .mc{min-width:0}
+  .mc b{font:700 22px/1 var(--display)}
+  .mc.best b{color:var(--blue)}
+  .mc .bar{height:4px;border-radius:2px;background:var(--heat0);margin-top:6px;overflow:hidden}
+  .mc .bar i{display:block;height:100%;background:var(--faint)}
+  .mc.best .bar i{background:var(--blue)}
+  .mc small{display:block;font-size:11px;color:var(--muted)}
 
   /* trade */
-  .tgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:980px}
-  .side h3{margin:0 0 8px;font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-  .side .tl{min-height:20px;margin-top:8px}
-  .verdict{max-width:980px;margin-top:14px;background:linear-gradient(135deg,#132036,#121826);border:1px solid var(--line);
-    border-radius:16px;padding:18px}
-  .vhead{font-size:24px;font-weight:800;letter-spacing:-.01em}
-  .vsub{color:var(--muted);margin-top:2px}
-  .meter{position:relative;height:12px;border-radius:6px;margin:16px 0 6px;
-    background:linear-gradient(90deg,var(--bad),#3a4560 45%,#3a4560 55%,var(--good))}
-  .meter i{position:absolute;top:-5px;width:4px;height:22px;background:#fff;border-radius:2px;transform:translateX(-2px);
-    box-shadow:0 0 0 3px rgba(0,0,0,.35)}
-  .mlab{display:flex;justify-content:space-between;font-size:11px;color:var(--muted)}
-  .vt{margin-top:14px}
-  .vt td:first-child,.vt th:first-child{text-align:left}
-  .vt th{cursor:default;background:none}
-  .insights{margin:14px 0 0;padding-left:18px}
-  .insights li{margin:5px 0}
-  .btns{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
-  .btn{border:1px solid var(--line);background:var(--panel2);border-radius:9px;padding:8px 14px;cursor:pointer;font-weight:600}
-  .btn.primary{background:var(--scoring);color:#06101f;border-color:var(--scoring)}
+  .sides{display:grid;gap:12px}
+  .side h2{font-size:20px;margin-bottom:8px}
+  .side .addwrap{position:relative;margin-top:8px}
+  .rm{flex:none;border:0;background:var(--heat0);width:28px;height:28px;border-radius:50%;color:var(--muted);font-size:13px}
+  .verdict{margin-top:20px;background:var(--surface);border-radius:20px;padding:18px 16px 16px}
+  .rink{width:100%;height:auto;display:block;margin:4px 0 2px}
+  .rink .puck{transition:transform .6s cubic-bezier(.2,.9,.25,1)}
+  .ends{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);padding:0 4px}
+  .vh{font:800 34px/1.02 var(--display);margin:14px 0 4px}
+  .vh.win{color:var(--blue)} .vh.lose{color:var(--red)}
+  .vs{color:var(--muted);margin:0 0 10px}
+  .facts{margin:12px 0 0;padding:0;list-style:none;display:grid;gap:8px}
+  .facts li{padding-left:16px;position:relative;font-size:14px}
+  .facts li::before{content:"";position:absolute;left:2px;top:.6em;width:6px;height:6px;border-radius:50%;background:var(--faint)}
+  details.more-d{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+  details.more-d summary{font-weight:600;color:var(--blue);cursor:pointer;list-style:none}
+  details.more-d summary::-webkit-details-marker{display:none}
+  .dt{width:100%;border-collapse:collapse;margin-top:8px;font-size:14px;font-variant-numeric:tabular-nums}
+  .dt td,.dt th{padding:7px 4px;border-top:1px solid var(--line);text-align:right}
+  .dt th{font-weight:600;color:var(--muted);font-size:12px;border-top:0}
+  .dt td:first-child,.dt th:first-child{text-align:left;color:var(--muted)}
+  .actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+  .btn{border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:10px 14px;font-weight:600;font-size:14px}
+  .btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+  .btn.ghost{background:none}
+
+  /* player sheet */
+  .scrim{position:fixed;inset:0;background:rgba(8,16,30,.45);z-index:40;opacity:0;pointer-events:none;transition:opacity .2s}
+  .scrim.open{opacity:1;pointer-events:auto}
+  .sheet{position:fixed;left:0;right:0;bottom:0;z-index:41;background:var(--ice);border-radius:22px 22px 0 0;
+    max-height:88vh;overflow-y:auto;transform:translateY(102%);transition:transform .28s cubic-bezier(.2,.9,.25,1);
+    padding:8px 18px calc(18px + env(safe-area-inset-bottom));box-shadow:var(--shadow)}
+  .sheet.open{transform:none}
+  .grab{width:40px;height:5px;border-radius:3px;background:var(--line);margin:4px auto 10px}
+  .sheet .close{position:absolute;right:12px;top:12px;border:0;background:var(--heat0);width:32px;height:32px;border-radius:50%;color:var(--muted)}
+  .sheet h2{font-size:34px;line-height:1;margin:6px 40px 6px 0}
+  .trio{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}
+  .trio div{background:var(--surface);border-radius:14px;padding:10px 12px}
+  .trio b{display:block;font:800 30px/1 var(--display)}
+  .trio span{font-size:12px;color:var(--muted)}
+  .trio .lead b{color:var(--blue)}
+  .kv{background:var(--surface);border-radius:14px;overflow:hidden;margin-top:10px}
+  .kv div{display:flex;justify-content:space-between;gap:10px;padding:10px 14px;border-top:1px solid var(--line);font-size:14px}
+  .kv div:first-child{border-top:0}
+  .kv span{color:var(--muted)}
+  .kv b{font-weight:600;text-align:right}
+  .bigsplit{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--heat0);margin:8px 0 4px}
+  .bigsplit .s{background:var(--blue)} .bigsplit .p{background:var(--gold)}
+  .note{background:var(--surface);border-left:3px solid var(--red);border-radius:6px 14px 14px 6px;padding:10px 12px;margin-top:10px;font-size:14px}
+  .note.cool{border-left-color:var(--blue)}
+  .sheet .actions .btn{flex:1}
 
   /* guide */
-  .guide{max-width:780px}
-  .guide h3{margin:26px 0 6px;font-size:16px}
-  .guide p,.guide li{color:#c9d3e6}
-  .guide dl{margin:0}
-  .guide dt{font-weight:800;margin-top:12px}
-  .guide dd{margin:2px 0 0;color:#c9d3e6}
-  .chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
-  .chip{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px;color:var(--ice)}
-  .chip b{color:var(--text)} .chip.neg b{color:var(--bad)}
-  code,.formula{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:2px 6px;font-size:12.5px}
-  .formula{display:block;padding:10px 12px;margin:8px 0;white-space:normal;line-height:1.6}
-  .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px}
+  .guide details{background:var(--surface);border-radius:14px;margin-bottom:8px}
+  .guide summary{padding:14px 16px;font:700 20px/1.1 var(--display);cursor:pointer;list-style:none;display:flex;justify-content:space-between}
+  .guide summary::-webkit-details-marker{display:none}
+  .guide summary::after{content:"+";color:var(--faint);font-weight:400}
+  .guide details[open] summary::after{content:"\2013"}
+  .guide .gb{padding:0 16px 14px}
+  .guide .gb p,.guide .gb li{max-width:62ch}
+  .guide dt{font-weight:700;margin-top:12px}
+  .guide dd{margin:2px 0 0;color:var(--muted)}
+  .pts{display:flex;flex-wrap:wrap;gap:6px}
+  .pts span{background:var(--heat0);border-radius:8px;padding:4px 9px;font-size:13px}
+  .pts b{font-weight:700}
+  .pts .neg b{color:var(--red)}
+  .formula{background:var(--heat0);border-radius:10px;padding:10px 12px;font-size:14px}
 
-  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);opacity:0;
-    background:#22304d;color:var(--text);padding:10px 16px;border-radius:10px;font-weight:600;
-    transition:all .2s;pointer-events:none;z-index:50;box-shadow:0 8px 24px rgba(0,0,0,.5)}
-  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast{position:fixed;left:50%;bottom:calc(86px + env(safe-area-inset-bottom));z-index:50;transform:translate(-50%,12px);opacity:0;
+    background:var(--ink);color:var(--ice);padding:10px 16px;border-radius:12px;font-weight:600;font-size:14px;
+    transition:all .2s;pointer-events:none;white-space:nowrap}
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+  [hidden]{display:none !important}
 
-  @media (max-width:1000px){ .hv{grid-template-columns:1fr} header,nav.tabs,main{padding-left:14px;padding-right:14px} }
-  @media (max-width:700px){
-    body{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
-    header{padding-top:calc(14px + env(safe-area-inset-top));padding-bottom:10px}
-    h1{font-size:22px}
-    nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:40;padding:0 0 env(safe-area-inset-bottom);
-      background:rgba(18,24,38,.97);border-top:1px solid var(--line);border-bottom:none;gap:0;backdrop-filter:blur(10px)}
-    nav.tabs button{flex:1;border-radius:0;padding:13px 0 12px;font-size:12px}
-    nav.tabs button.active{background:none;color:var(--scoring);box-shadow:inset 0 2px 0 var(--scoring)}
-    main{padding:12px 10px 30px}
-    .grid{grid-template-columns:1fr}
-    .hs{display:none}
-    .sub{display:block}
-    input[type=search]{min-width:0;width:100%;font-size:16px}
-    .controls .seg{width:100%} .controls .seg button{flex:1;padding:9px 0}
-    .legend{margin-left:0;font-size:11px;gap:10px}
-    td,th{padding:9px 5px}
-    .bar{width:64px}
-    .tgrid{grid-template-columns:1fr}
-    .vhead{font-size:20px}
-    .toast{bottom:calc(76px + env(safe-area-inset-bottom))}
+  @media (min-width:900px){
+    body{padding-bottom:40px}
+    nav.tabs{position:sticky;top:0;bottom:auto;border-top:0;border-bottom:1px solid var(--line);padding:0}
+    nav.tabs button{flex-direction:row;gap:8px;font-size:14px;padding:12px 14px;max-width:none;flex:none}
+    nav.tabs svg{width:20px;height:20px}
+    .sides{grid-template-columns:1fr 1fr}
+    .sheet{left:50%;right:auto;bottom:auto;top:50%;width:440px;border-radius:22px;transform:translate(-50%,-46%) scale(.98);
+      opacity:0;pointer-events:none;transition:all .2s}
+    .sheet.open{transform:translate(-50%,-50%);opacity:1;pointer-events:auto}
+    .grab{display:none}
+    .toast{bottom:28px}
   }
+  @media (prefers-reduced-motion: reduce){ *{transition:none !important} }
 </style>
 </head>
 <body>
-<header>
-  <div class="eyebrow">Yahoo points league</div>
-  <h1>FP <span>Hockey</span></h1>
-  <div class="meta" id="meta"></div>
+<header class="top">
+  <div class="brand">FP Hockey</div>
+  <div class="upd" id="upd"></div>
 </header>
-<nav class="tabs">
-  <button data-tab="pulse" class="active">Pulse</button>
-  <button data-tab="rank">Rankings</button>
-  <button data-tab="compare">Compare</button>
-  <button data-tab="trade">Trade</button>
-  <button data-tab="guide">Guide</button>
+<nav class="tabs" aria-label="Pages">
+  <button data-v="week"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>This week</button>
+  <button data-v="rank"><svg viewBox="0 0 24 24"><path d="M5 20V11M12 20V5M19 20v-6"/></svg>Rankings</button>
+  <button data-v="compare"><svg viewBox="0 0 24 24"><rect x="3.5" y="4" width="7" height="16" rx="2"/><rect x="13.5" y="4" width="7" height="16" rx="2"/></svg>Compare</button>
+  <button data-v="trade"><svg viewBox="0 0 24 24"><path d="M4 8h14l-3.5-3.5M20 16H6l3.5 3.5"/></svg>Trade</button>
+  <button data-v="guide"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.4a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.1-2.4 3.7M12 17h.01"/></svg>Guide</button>
 </nav>
-<main>
-  <section id="tab-pulse">
-    <h2 id="pulseTitle">Weekly Pulse</h2>
-    <p class="lede" id="pulseLede"></p>
-    <div class="grid" id="pulseGrid"></div>
-  </section>
 
-  <section id="tab-rank" hidden>
-    <div class="controls">
-      <div class="seg" id="rankSeg">
-        <button data-v="sk" class="active">Skaters</button>
-        <button data-v="g">Goalies</button>
-        <button data-v="hv">Hidden Value</button>
-      </div>
-    </div>
-    <div id="rank-sk">
-      <div class="controls">
-        <input type="search" id="skSearch" placeholder="Search player or team...">
-        <div class="seg" id="posSeg">
-          <button data-pos="ALL" class="active">All</button><button data-pos="F">F</button>
-          <button data-pos="C">C</button><button data-pos="LW">LW</button>
-          <button data-pos="RW">RW</button><button data-pos="D">D</button>
-        </div>
-        <div class="legend"><span><i style="background:var(--scoring)"></i>Scoring</span>
-          <span><i style="background:var(--peri)"></i>Peripherals (SOG, HIT, BLK)</span></div>
-      </div>
-      <div class="scroll"><table id="skTable"></table></div>
-      <div class="note">Tap a name to add the player to Compare. Sorted by projected FP per game; tap any column header to re-sort.</div>
-    </div>
-    <div id="rank-g" hidden>
-      <div class="controls"><input type="search" id="gSearch" placeholder="Search goalie or team..."></div>
-      <div class="scroll"><table id="gTable"></table></div>
-      <div class="note">Goalies are ranked by projected FP per <i>team</i> game (FP per start &times; share of starts), so a 1A and a backup compare fairly.</div>
-    </div>
-    <div id="rank-hv" hidden>
-      <div class="hv">
-        <div>
-          <h3 class="up">&#9650; Better in your league</h3>
-          <p>Ranked much higher by FP/GP than by NHL points per game. Usually hits, blocks and shots doing the work.</p>
-          <div class="scroll"><table id="hvUp"></table></div>
-        </div>
-        <div>
-          <h3 class="down">&#9660; Worse in your league</h3>
-          <p>NHL points look better than their fantasy value here. Few peripherals, so they rely on scoring.</p>
-          <div class="scroll"><table id="hvDown"></table></div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section id="tab-compare" hidden>
-    <h2>Compare players</h2>
-    <p class="lede">Add up to 4 players. Green marks the best value in each row. Tap <b>Give</b> or <b>Get</b> to send a player to the Trade page.</p>
-    <div class="cmpwrap">
-      <div class="controls"><div class="picker" id="cmpPicker" style="flex:1"></div>
-        <button class="btn" id="cmpClear">Clear</button></div>
-      <div class="scroll"><table class="cmp" id="cmpTable"></table></div>
-    </div>
-  </section>
-
-  <section id="tab-trade" hidden>
-    <h2>Trade analyzer</h2>
-    <p class="lede">Add the players you'd give and the players you'd get. The verdict uses rest-of-season value over replacement, so it accounts for position scarcity and roster spots.</p>
-    <div class="tgrid">
-      <div class="card side"><h3>You give</h3><div class="picker" id="givePicker"></div><div class="tl" id="giveList"></div></div>
-      <div class="card side"><h3>You get</h3><div class="picker" id="getPicker"></div><div class="tl" id="getList"></div></div>
-    </div>
-    <div class="verdict" id="verdict"></div>
-  </section>
-
-  <section id="tab-guide" hidden>
-    <div class="guide" id="guide"></div>
-  </section>
+<main class="wrap">
+  <section id="v-week"></section>
+  <section id="v-rank" hidden></section>
+  <section id="v-compare" hidden></section>
+  <section id="v-trade" hidden></section>
+  <section id="v-guide" hidden></section>
 </main>
-<div class="toast" id="toast"></div>
+
+
+
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetName"></div>
+<div class="toast" id="toast" role="status"></div>
 
 <script>
 const D = __DATA__;
@@ -905,18 +904,21 @@ const P = new Map([...SK, ...GO].map(p => [p.id, p]));
 const isG = p => p.pos === "G";
 const projTG = p => isG(p) ? p.projTG : p.proj;
 
-// ---------- helpers ----------
+// ---------- formatting ----------
 const nz = v => v === null || v === undefined || Number.isNaN(v);
-const f0 = v => nz(v) ? "—" : Math.round(v).toLocaleString();
-const f1 = v => nz(v) ? "—" : Number(v).toFixed(1);
-const f2 = v => nz(v) ? "—" : Number(v).toFixed(2);
-const f3 = v => nz(v) ? "—" : Number(v).toFixed(3).replace(/^0/, "");
-const pct = v => nz(v) ? "—" : Math.round(v) + "%";
-const sgn = (v, f = f1) => nz(v) ? "—" : (v > 0 ? "+" : "") + f(v);
-const pm = v => nz(v) ? "—" : (Math.round(v) > 0 ? "+" : "") + Math.round(v);
+const DASH = "–";
+const f0 = v => nz(v) ? DASH : Math.round(v).toLocaleString();
+const f1 = v => nz(v) ? DASH : Number(v).toFixed(1);
+const f2 = v => nz(v) ? DASH : Number(v).toFixed(2);
+const f3 = v => nz(v) ? DASH : Number(v).toFixed(3).replace(/^0/, "");
+const pct = v => nz(v) ? DASH : Math.round(v) + "%";
+const sgn = (v, f = f1) => nz(v) ? DASH : (v > 0 ? "+" : v < 0 ? "−" : "") + f(Math.abs(v));
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const fd = s => { if (!s) return "—"; const [y, m, d] = s.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("en-CA", { month: "short", day: "numeric" }); };
+const dt = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const fd = s => s ? dt(s).toLocaleDateString("en-CA", { month: "short", day: "numeric" }) : DASH;
+const fday = s => s ? dt(s).toLocaleDateString("en-CA", { day: "numeric" }) : DASH;
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const words = ["zero","one","two","three","four","five","six","seven"];
 const store = {
   get(k, d) { try { const v = localStorage.getItem("fp:" + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem("fp:" + k, JSON.stringify(v)); } catch (e) {} },
@@ -924,192 +926,274 @@ const store = {
 let toastT;
 function toast(msg) {
   const t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show");
-  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 1600);
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 1700);
 }
-const posTag = v => `<span class="pos ${v}">${v}</span>`;
-const nameCell = (v, r) => `${esc(v)}<div class="sub">${esc(r.team)} · ${r.pos}</div>`;
-const maxBar = Math.max(0.01, ...SK.filter(p => p.q).map(p => Math.max(0, p.fpgS) + Math.max(0, p.fpgP)));
-const splitBar = (_, r) => {
-  const s = Math.max(0, r.fpgS) / maxBar * 100, p = Math.max(0, r.fpgP) / maxBar * 100;
-  return `<div class="bar" title="Scoring ${f2(r.fpgS)} / Peripherals ${f2(r.fpgP)} per game"><div class="s" style="width:${s}%"></div><div class="p" style="width:${p}%"></div></div>`;
-};
+document.getElementById("upd").textContent = "Updated " + D.generated.replace(/, \d{4}/, ",").replace(/^(\w+) 0/, "$1 ").replace(/ 0(\d:)/, " $1");
 
-document.getElementById("meta").textContent =
-  `${D.season} · updated ${D.generated} · ${SK.filter(p => p.q).length} skaters, ${GO.filter(g => g.q).length} goalies ranked`;
+const meta = p => `<span class="meta"><span class="tm">${esc(p.team)}</span>${p.pos}</span>`;
+const maxSplit = Math.max(0.01, ...SK.filter(p => p.q).map(p => Math.max(0, p.fpgS) + Math.max(0, p.fpgP)));
+const split = p => isG(p) ? "" : `<div class="split" aria-hidden="true"><div class="s" style="width:${Math.max(0, p.fpgS) / maxSplit * 100}%"></div><div class="p" style="width:${Math.max(0, p.fpgP) / maxSplit * 100}%"></div></div>`;
+function row(p, value, sub, rank, extra = "") {
+  return `<button class="row" data-pid="${p.id}">${rank !== undefined ? `<span class="rk">${rank}</span>` : ""}
+    <span class="who"><b>${esc(p.name)}</b>${meta(p)}</span>
+    <span class="val">${value}${sub ? `<small>${sub}</small>` : ""}${extra}</span></button>`;
+}
+const listHTML = (items, fn, empty) => items.length ? `<div class="list">${items.map(fn).join("")}</div>` : `<div class="list"><div class="empty">${empty}</div></div>`;
+function seg(name, options, current, full) {
+  return `<div class="seg${full ? " full" : ""}" role="group">${options.map(([v, l]) =>
+    `<button data-seg="${name}" data-val="${v}" aria-pressed="${v === current}">${l}</button>`).join("")}</div>`;
+}
 
-// ---------- tabs ----------
-const TABS = ["pulse", "rank", "compare", "trade", "guide"];
-function showTab(name) {
-  document.querySelectorAll("nav.tabs button").forEach(x => x.classList.toggle("active", x.dataset.tab === name));
-  TABS.forEach(t => document.getElementById("tab-" + t).hidden = t !== name);
-  store.set("tab", name);
-  window.scrollTo(0, 0);
+// ---------- navigation ----------
+const VIEWS = ["week", "rank", "compare", "trade", "guide"];
+function go(v) {
+  VIEWS.forEach(x => document.getElementById("v-" + x).hidden = x !== v);
+  document.querySelectorAll("nav.tabs button").forEach(b => b.toggleAttribute("aria-current", b.dataset.v === v));
+  document.querySelectorAll("nav.tabs button").forEach(b => { if (b.dataset.v === v) b.setAttribute("aria-current", "page"); });
+  store.set("view", v); window.scrollTo(0, 0);
 }
-document.querySelectorAll("nav.tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+document.querySelectorAll("nav.tabs button").forEach(b => b.onclick = () => go(b.dataset.v));
 
-// ---------- PULSE ----------
-function prow(p, right, sub) {
-  return `<div class="prow"><div class="pn"><b>${esc(p.name)}</b><span>${esc(p.team)} · ${p.pos}${sub ? " · " + sub : ""}</span></div>
-    <div class="pv">${right}</div><button class="add" data-add="${p.id}" title="Add to Compare" aria-label="Add to Compare">+</button></div>`;
+// ---------- player sheet ----------
+const sheet = document.getElementById("sheet"), scrim = document.getElementById("scrim");
+let lastFocus = null;
+function openSheet(id) {
+  const p = P.get(id); if (!p) return;
+  lastFocus = document.activeElement;
+  sheet.innerHTML = sheetHTML(p);
+  sheet.classList.add("open"); scrim.classList.add("open");
+  sheet.scrollTop = 0;
+  setTimeout(() => sheet.querySelector(".close").focus(), 50);
 }
-function card(color, title, desc, body) {
-  return `<div class="card"><h3><span class="dot" style="background:${color}"></span>${title}</h3><div class="desc">${desc}</div>${body}</div>`;
+function closeSheet() {
+  sheet.classList.remove("open"); scrim.classList.remove("open");
+  if (lastFocus) lastFocus.focus();
 }
-function groupTeams(key) {
-  const g = {};
-  Object.entries(D.teams).forEach(([t, i]) => { const n = i[key]; if (n === null || n === undefined) return; (g[n] = g[n] || []).push(t); });
-  const keys = Object.keys(g).map(Number).sort((a, b) => b - a);
-  if (!keys.length) return `<div class="empty">Schedule not available.</div>`;
-  return keys.map(n => `<div class="sgrp"><div class="sn ${n >= 4 ? "hi" : n <= 1 ? "lo" : ""}">${n}</div>
-    <div class="st">${g[n].sort().map(t => `<span class="team">${t}</span>`).join("")}</div></div>`).join("");
-}
-function renderPulse() {
-  const W = D.week, nxt = W.focus === "next";
-  const fw = nxt ? `next week (${fd(W.nmon)} – ${fd(W.nsun)})` : `this week (rest of ${fd(W.mon)} – ${fd(W.sun)})`;
-  const wkFp = p => nxt ? p.nxtFp : p.wkFp, wkG = p => nxt ? p.nxt : p.wk;
-  document.getElementById("pulseTitle").textContent = `Weekly Pulse · ${fd(W.mon)} – ${fd(W.sun)}`;
-  document.getElementById("pulseLede").innerHTML =
-    `What matters for ${fw}. More games = more fantasy points, so start with the schedule. Tap <b>+</b> on any player to add them to Compare.`;
-  const L = ids => ids.map(id => P.get(id)).filter(Boolean);
-  const list = (ids, fn) => { const xs = L(ids); return xs.length ? xs.map(fn).join("") : `<div class="empty">Nothing to show yet — needs a few more games of data.</div>`; };
-  const cards = [
-    card("var(--good)", "Games left this week", `${fd(W.today)} – ${fd(W.sun)}. Teams with 4 are gold for streaming; 1–2 means bench or swap.`, groupTeams("wk")),
-    card("var(--scoring)", "Next week", `${fd(W.nmon)} – ${fd(W.nsun)}. Plan your Sunday-night adds around this.`, groupTeams("nxt")),
-    card("var(--peri)", "Stream targets", `Projected FP for ${nxt ? "next week" : "the rest of this week"} among players ranked outside the top ${D.pulse.streamCut} (probably free agents in a ${C.leagueTeams}-team league — check Yahoo).`,
-      list(D.pulse.stream, p => prow(p, `<b>${f1(wkFp(p))}</b> FP<small>${wkG(p)} games · ${f2(p.proj)}/gm</small>`, `${pct(p.peri)} peri`))),
-    card("#d4a7ff", "Goalie starts", `Projected starts and FP for ${nxt ? "next week" : "the rest of this week"}. Starts = team games × his share of starts.`,
-      list(D.pulse.goalies, g => prow(g, `<b>${f1(wkFp(g))}</b> FP<small>~${f1(nxt ? g.nxtStarts : g.wkStarts)} starts · ${f2(g.proj)}/start</small>`, `${pct(g.share * 100)} of starts`))),
-    card("var(--good)", "Heating up", `FP per game over the last ${C.recentDays} days vs. their season average.`,
-      list(D.pulse.hot, p => prow(p, `<span class="up">${sgn(p.recFpg - p.fpg, f2)}</span><small>${f2(p.recFpg)} vs ${f2(p.fpg)}</small>`, `${p.recGp} GP`))),
-    card("var(--bad)", "Cooling off", `Biggest drop from season average over the last ${C.recentDays} days.`,
-      list(D.pulse.cold, p => prow(p, `<span class="down">${sgn(p.recFpg - p.fpg, f2)}</span><small>${f2(p.recFpg)} vs ${f2(p.fpg)}</small>`, `${p.recGp} GP`))),
-    card("var(--bad)", "Sell high — shooting luck", "Scoring on a much higher % of shots than normal for them. Goals usually slow down. Good time to trade them.",
-      list(D.pulse.sell, p => prow(p, `<b>${f1(p.sh)}%</b> Sh<small>normal ${f1(p.shBase)}%</small>`, `${f0(p.sog)} shots`))),
-    card("var(--good)", "Buy low — due to bounce back", "Shooting well below their normal %. If the shots are there, goals usually follow.",
-      list(D.pulse.buy, p => prow(p, `<b>${f1(p.sh)}%</b> Sh<small>normal ${f1(p.shBase)}%</small>`, `${f0(p.sog)} shots`))),
-  ];
-  document.getElementById("pulseGrid").innerHTML = cards.join("");
-}
-document.addEventListener("click", e => { const b = e.target.closest("[data-add]"); if (b) addCompare(+b.dataset.add); });
+scrim.onclick = closeSheet;
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeSheet(); });
+sheet.addEventListener("click", e => {
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  const id = +b.dataset.id;
+  if (b.dataset.act === "close") return closeSheet();
+  if (b.dataset.act === "compare") { addCompare(id); closeSheet(); }
+  if (b.dataset.act === "give" || b.dataset.act === "get") { addTrade(b.dataset.act, id); closeSheet(); }
+});
+document.addEventListener("click", e => {
+  const r = e.target.closest("[data-pid]");
+  if (r && !r.closest(".sugg")) openSheet(+r.dataset.pid);
+});
 
-// ---------- sortable table ----------
-function makeTable(el, cols, getRows, defaultSort, defaultAsc = false) {
-  const state = { key: defaultSort, asc: defaultAsc };
-  const ascFirst = new Set(["rank", "projRank", "posRank", "name", "team", "pos"]);
-  function render() {
-    const rows = getRows().slice().sort((a, b) => {
-      let x = a[state.key], y = b[state.key];
-      if (typeof x === "string" || typeof y === "string") return state.asc ? String(x).localeCompare(y) : String(y).localeCompare(x);
-      x = nz(x) ? (state.asc ? Infinity : -Infinity) : x; y = nz(y) ? (state.asc ? Infinity : -Infinity) : y;
-      return state.asc ? x - y : y - x;
-    });
-    const head = "<tr>" + cols.map(c => {
-      const k = c.sort || c.key;
-      const cls = [c.hs ? "hs" : "", c.left ? "l" : "", k === state.key ? "sorted" : "", k === state.key && state.asc ? "asc" : ""].join(" ");
-      return `<th class="${cls}" data-k="${k}" title="${esc(c.tip || "")}">${c.label}</th>`;
-    }).join("") + "</tr>";
-    const body = rows.map(r => `<tr data-id="${r.id}">` + cols.map(c =>
-      `<td class="${c.hs ? "hs" : ""} ${c.left ? "l" : ""} ${c.cls || ""}">${c.fmt ? c.fmt(r[c.key], r) : esc(r[c.key])}</td>`
-    ).join("") + "</tr>").join("");
-    el.innerHTML = `<thead>${head}</thead><tbody>${body || `<tr><td class="l muted" colspan="${cols.length}">No players match.</td></tr>`}</tbody>`;
-    el.querySelectorAll("th").forEach(th => th.onclick = () => {
-      const k = th.dataset.k;
-      if (state.key === k) state.asc = !state.asc; else { state.key = k; state.asc = ascFirst.has(k); }
-      render();
-    });
+function sheetHTML(p) {
+  const g = isG(p);
+  const trio = g
+    ? [["Projected per start", f2(p.proj), true], ["Season per game", f2(p.fpg)], [`Last ${C.recentDays} days`, p.recFpgs === null ? DASH : f2(p.recFpgs)]]
+    : [["Projected per game", f2(p.proj), true], ["Season per game", f2(p.fpg)], [`Last ${C.recentDays} days`, p.recFpg === null ? DASH : f2(p.recFpg)]];
+  let body = `<div class="trio">${trio.map(([l, v, lead]) => `<div class="${lead ? "lead" : ""}"><b>${v}</b><span>${l}</span></div>`).join("")}</div>`;
+  if (!g) {
+    const tot = Math.max(0, p.fpgS) + Math.max(0, p.fpgP) || 1;
+    body += `<div class="kv"><div style="display:block">
+      <span>Where his points come from</span>
+      <div class="bigsplit"><div class="s" style="width:${Math.max(0, p.fpgS) / tot * 100}%"></div><div class="p" style="width:${Math.max(0, p.fpgP) / tot * 100}%"></div></div>
+      <span style="font-size:13px">${pct(100 - p.peri)} goals and assists, ${pct(p.peri)} shots, hits and blocks. ${p.peri >= 40 ? "That's a steady floor." : p.peri < 20 ? "Streaky: it rides on scoring." : ""}</span></div></div>`;
+  } else {
+    body += `<div class="kv"><div><span>Starts his team's games</span><b>${pct(p.share * 100)}</b></div>
+      <div><span>Record</span><b>${f0(p.w)} W, ${f0(p.l + p.otl)} L</b></div>
+      <div><span>Save %</span><b>${f3(p.svPct)}</b></div>
+      <div><span>Shots faced per game</span><b>${f1(p.saFor)}</b></div>
+      <div><span>Points per game even when he loses</span><b>${f2(p.noWin)}</b></div></div>`;
   }
-  el.addEventListener("click", e => { const td = e.target.closest("td.name"); if (td) addCompare(+td.parentElement.dataset.id); });
-  render();
-  return render;
+  const wkLine = g ? `${f1(p.wkStarts)} starts, ${f1(p.wkFp)} FP` : `${plural(p.wk ?? 0, "game")}, ${f1(p.wkFp)} FP`;
+  const nxLine = g ? `${f1(p.nxtStarts)} starts, ${f1(p.nxtFp)} FP` : `${plural(p.nxt ?? 0, "game")}, ${f1(p.nxtFp)} FP`;
+  body += `<div class="kv">
+    <div><span>Rest of this week</span><b>${p.wk === null ? DASH : wkLine}</b></div>
+    <div><span>Next week</span><b>${p.nxt === null ? DASH : nxLine}</b></div>
+    <div><span>Rest of season</span><b>${f0(p.rosFp)} FP</b></div>
+    <div><span>Value over a free agent</span><b>${sgn(p.rosVor, f0)} FP</b></div>
+    ${D.week.ps ? `<div><span>Your playoff weeks</span><b>${f0(p.poFp)} FP</b></div>` : ""}
+    <div><span>Season stats</span><b>${g ? `${f0(p.gp)} GP, ${f0(p.sv)} saves, ${f0(p.so)} SO` : `${f0(p.gp)} GP, ${f0(p.g)} G, ${f0(p.a)} A, ${f0(p.hit)} HIT, ${f0(p.blk)} BLK`}</b></div>
+  </div>`;
+  if (!g && !nz(p.shDiff) && p.shDiff >= 5)
+    body += `<div class="note">Scoring on ${f1(p.sh)}% of his shots, well above his normal ${f1(p.shBase)}%. Goals will probably slow down, so this is a good time to sell.</div>`;
+  if (!g && !nz(p.shDiff) && p.shDiff <= -4)
+    body += `<div class="note cool">Scoring on only ${f1(p.sh)}% of his shots, below his normal ${f1(p.shBase)}%. If the shots keep coming, goals should follow.</div>`;
+  const rk = g ? (p.projRank ? `ranked #${p.projRank}` : "") : (p.posRank ? `ranked #${p.posRank}` : "");
+  return `<div class="grab"></div><button class="close" data-act="close" aria-label="Close">✕</button>
+    <h2 id="sheetName">${esc(p.name)}</h2>
+    <div class="meta" style="font-size:13px"><span class="tm">${esc(p.team)}</span>${p.pos}${rk ? `, ${rk}` : ""}</div>
+    ${body}
+    <div class="actions">
+      <button class="btn primary" data-act="compare" data-id="${p.id}">Compare</button>
+      <button class="btn" data-act="give" data-id="${p.id}">Trade away</button>
+      <button class="btn" data-act="get" data-id="${p.id}">Trade for</button>
+    </div>`;
 }
+
+// ---------- THIS WEEK ----------
+const weekState = { sched: D.week.focus === "next" ? "nxt" : "wk", form: "hot", luck: "sell", open: {} };
+function heatGrid(key) {
+  const teams = Object.entries(D.teams).filter(([, i]) => !nz(i[key]));
+  if (!teams.length) return `<div class="list"><div class="empty">The schedule didn't load on today's update.</div></div>`;
+  teams.sort((a, b) => b[1][key] - a[1][key] || a[0].localeCompare(b[0]));
+  return `<div class="teamgrid">${teams.map(([t, i]) => `<div class="tile h${Math.min(4, i[key])}"><span>${t}</span><b>${i[key]}</b></div>`).join("")}</div>
+    <div class="scale"><span><i style="background:var(--heat4)"></i>4+ games</span><span><i style="background:var(--heat2)"></i>2</span><span><i style="background:var(--heat0)"></i>0</span></div>`;
+}
+function capList(id, items, fn, empty) {
+  const n = weekState.open[id] ? items.length : 5;
+  return listHTML(items.slice(0, n), fn, empty) +
+    (items.length > 5 ? `<button class="more" data-more="${id}">${weekState.open[id] ? "Show fewer" : `Show all ${items.length}`}</button>` : "");
+}
+function renderWeek() {
+  const W = D.week, nxt = W.focus === "next";
+  const L = ids => ids.map(id => P.get(id)).filter(Boolean);
+  const stream = L(D.pulse.stream), goalies = L(D.pulse.goalies), hot = L(D.pulse.hot), cold = L(D.pulse.cold);
+  const sell = L(D.pulse.sell), buy = L(D.pulse.buy);
+  const wkFp = p => nxt ? p.nxtFp : p.wkFp, wkG = p => nxt ? p.nxt : p.wk;
+  const daysLeft = Math.round((dt(W.sun) - dt(W.today)) / 864e5) + 1;
+
+  // briefing
+  const key = nxt ? "nxt" : "wk";
+  const most = Object.entries(D.teams).filter(([, i]) => !nz(i[key]));
+  const top = most.length ? Math.max(...most.map(([, i]) => i[key])) : 0;
+  const busy = most.filter(([, i]) => i[key] === top).map(([t]) => t).sort();
+  const lnk = p => `<button class="lnk" data-pid="${p.id}">${esc(p.name)}</button>`;
+  const brief = [];
+  if (busy.length) brief.push(["b", top, `${busy.length > 4 ? busy.slice(0, 4).join(", ") + ` and ${busy.length - 4} more` : busy.join(", ")} ${busy.length === 1 ? "has" : "have"} the most games ${nxt ? "next week" : "left this week"} (${top}). Lean on players from ${busy.length === 1 ? "that team" : "those teams"}.`]);
+  if (stream[0]) brief.push(["g", "+", `Best pickup: ${lnk(stream[0])}, about ${f1(wkFp(stream[0]))} points over ${plural(wkG(stream[0]), "game")}. Check he's a free agent in Yahoo.`]);
+  if (hot[0]) brief.push(["r", "↑", `Hottest player: ${lnk(hot[0])}, scoring ${f2(hot[0].recFpg)} a game over the last ${C.recentDays} days.`]);
+
+  const html = `
+    <h1>${nxt ? "Next week" : "This week"}</h1>
+    <p class="intro">${nxt ? `${fd(W.nmon)} to ${fday(W.nsun)}. Set your adds tonight.` : `${fd(W.mon)} to ${fday(W.sun)}. ${daysLeft > 1 ? `${words[daysLeft] ? words[daysLeft][0].toUpperCase() + words[daysLeft].slice(1) : daysLeft} days left` : "Last day"}, so lineup moves still count.`}</p>
+    ${brief.length ? `<ul class="brief">${brief.map(([c, ic, t]) => `<li><span class="ic ${c}">${ic}</span><span>${t}</span></li>`).join("")}</ul>` : ""}
+
+    <section class="block blueline">
+      <div class="bh"><h2>Games by team</h2>${seg("sched", [["wk", "Rest of week"], ["nxt", "Next week"]], weekState.sched)}</div>
+      <p class="hint">More games means more points. Teams with 4 are the best places to find streamers.</p>
+      ${heatGrid(weekState.sched)}
+    </section>
+
+    <section class="block">
+      <h2>Pickups</h2>
+      <p class="hint">Players probably available in a ${C.leagueTeams}-team league, by points expected ${nxt ? "next week" : "for the rest of the week"}.</p>
+      ${capList("stream", stream, p => row(p, `<b>${f1(wkFp(p))}</b>`, plural(wkG(p), "game")), "No pickups to suggest yet.")}
+    </section>
+
+    <section class="block">
+      <h2>Goalie starts</h2>
+      <p class="hint">Expected starts ${nxt ? "next week" : "for the rest of the week"}, based on how often each goalie plays.</p>
+      ${capList("goalies", goalies, g => row(g, `<b>${f1(wkFp(g))}</b>`, `about ${f1(nxt ? g.nxtStarts : g.wkStarts)} starts`), "No goalie projections yet.")}
+    </section>
+
+    <section class="block redline">
+      <div class="bh"><h2>Form</h2>${seg("form", [["hot", "Heating up"], ["cold", "Cooling off"]], weekState.form)}</div>
+      <p class="hint">Points per game over the last ${C.recentDays} days compared with their season.</p>
+      ${weekState.form === "hot"
+        ? capList("hot", hot, p => row(p, `<b class="up">${sgn(p.recFpg - p.fpg, f2)}</b>`, `${f2(p.recFpg)} lately`), "Needs a few more games of data.")
+        : capList("cold", cold, p => row(p, `<b class="dn">${sgn(p.recFpg - p.fpg, f2)}</b>`, `${f2(p.recFpg)} lately`), "Needs a few more games of data.")}
+    </section>
+
+    <section class="block">
+      <div class="bh"><h2>Shooting luck</h2>${seg("luck", [["sell", "Sell high"], ["buy", "Buy low"]], weekState.luck)}</div>
+      <p class="hint">${weekState.luck === "sell"
+        ? "Scoring on far more of their shots than usual. That rarely lasts, so their value may never be higher."
+        : "Scoring on far fewer of their shots than usual. If the shots keep coming, goals usually follow."}</p>
+      ${weekState.luck === "sell"
+        ? capList("sell", sell, p => row(p, `<b class="up">${f1(p.sh)}%</b>`, `usually ${f1(p.shBase)}%`), "No one is running unusually hot.")
+        : capList("buy", buy, p => row(p, `<b class="dn">${f1(p.sh)}%</b>`, `usually ${f1(p.shBase)}%`), "No one is running unusually cold.")}
+    </section>`;
+  document.getElementById("v-week").innerHTML = html;
+}
+document.getElementById("v-week").addEventListener("click", e => {
+  const s = e.target.closest("[data-seg]");
+  if (s) { weekState[s.dataset.seg] = s.dataset.val; return renderWeek(); }
+  const m = e.target.closest("[data-more]");
+  if (m) { weekState.open[m.dataset.more] = !weekState.open[m.dataset.more]; renderWeek(); }
+});
 
 // ---------- RANKINGS ----------
-document.querySelectorAll("#rankSeg button").forEach(b => b.onclick = () => {
-  document.querySelectorAll("#rankSeg button").forEach(x => x.classList.toggle("active", x === b));
-  ["sk", "g", "hv"].forEach(v => document.getElementById("rank-" + v).hidden = v !== b.dataset.v);
+const SORTS = {
+  sk: [["proj", "Projected per game"], ["rosFp", "Rest of season"], ["rosVor", "Value over a free agent"], ["fpg", "Season per game"],
+       ["recFpg", `Last ${C.recentDays} days`], ["fpgP", "Shots, hits and blocks"]],
+  g: [["projTG", "Projected per team game"], ["proj", "Projected per start"], ["rosFp", "Rest of season"], ["share", "Share of starts"], ["fpg", "Season per game"]],
+};
+const rs = { view: "sk", pos: "ALL", q: "", sort: { sk: "proj", g: "projTG" }, hv: "up", shown: 30 };
+function rankVal(p, k) {
+  const v = p[k];
+  if (k === "share") return [`<b>${pct(v * 100)}</b>`, "of starts"];
+  if (k === "rosFp") return [`<b>${f0(v)}</b>`, "points left"];
+  if (k === "rosVor") return [`<b>${sgn(v, f0)}</b>`, "vs free agent"];
+  if (k === "fpgP") return [`<b>${f2(v)}</b>`, "per game"];
+  if (k === "proj" && isG(p)) return [`<b>${f2(v)}</b>`, "per start"];
+  return [`<b>${f2(v)}</b>`, "per game"];
+}
+function rankListHTML() {
+  const isSk = rs.view === "sk";
+  const sortKey = rs.sort[rs.view];
+  const q = rs.q.trim().toLowerCase();
+  const pool = (isSk ? SK : GO).filter(p => p.q
+    && (!isSk || rs.pos === "ALL" || p.pos === rs.pos || (rs.pos === "F" && ["C", "LW", "RW"].includes(p.pos)))
+    && (!q || p.name.toLowerCase().includes(q) || p.team.toLowerCase() === q))
+    .sort((a, b) => (nz(b[sortKey]) ? -1e9 : b[sortKey]) - (nz(a[sortKey]) ? -1e9 : a[sortKey]));
+  return listHTML(pool.slice(0, rs.shown), (p, i) => { const [v, s] = rankVal(p, sortKey); return row(p, v, s, i + 1, isSk ? split(p) : ""); }, "No players match that search.")
+    + (pool.length > rs.shown ? `<button class="more" data-rmore>Show more (${pool.length - rs.shown} left)</button>` : "");
+}
+function renderRank() {
+  const el = document.getElementById("v-rank");
+  const head = `<h1>Rankings</h1>
+    <p class="intro">Everyone ranked by your league's scoring. Tap a player for the full picture.</p>
+    ${seg("rview", [["sk", "Skaters"], ["g", "Goalies"], ["hv", "Hidden value"]], rs.view, true)}`;
+  let body = "";
+  if (rs.view === "hv") {
+    const pool = SK.filter(p => p.q).sort((a, b) => b.gap - a.gap);
+    const items = rs.hv === "up" ? pool.slice(0, 30) : pool.slice(-30).reverse();
+    body = `<div style="margin:16px 0 4px">${seg("hv", [["up", "Better than their points"], ["down", "Worse than their points"]], rs.hv)}</div>
+      <p class="hint">${rs.hv === "up"
+        ? "Your scoring ranks these players much higher than plain NHL points do, usually because of hits, blocks and shots. League-mates who draft by points will undervalue them."
+        : "NHL points make these players look better than they are in your league. Few hits, blocks or shots, so they rely on scoring."}</p>
+      ${listHTML(items, p => row(p, `<b class="${p.gap > 0 ? "dn" : "up"}">${p.gap > 0 ? "+" : "−"}${Math.abs(p.gap)}</b>`, `#${p.rank} here, #${p.ppgRank} by points`), "Not enough games yet.")}`;
+  } else {
+    const isSk = rs.view === "sk";
+    const sortKey = rs.sort[rs.view];
+    body = `<div class="controls" style="margin-top:14px">
+        <div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg>
+          <input type="search" id="rq" placeholder="Search a player or team (EDM)" value="${esc(rs.q)}" autocomplete="off" autocorrect="off" spellcheck="false"></div>
+        ${isSk ? `<div class="chips" role="group">${["ALL", "F", "C", "LW", "RW", "D"].map(x =>
+          `<button class="chip" data-pos="${x}" aria-pressed="${rs.pos === x}">${x === "ALL" ? "All" : x === "F" ? "Forwards" : x}</button>`).join("")}</div>` : ""}
+        <div class="sortrow"><label for="rsort">Sort by</label><select id="rsort">${SORTS[rs.view].map(([k, l]) =>
+          `<option value="${k}" ${k === sortKey ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+      </div>
+      <div id="rlist">${rankListHTML()}</div>
+      ${isSk ? `<p class="hint" style="margin-top:12px">The small bar shows where points come from: <b style="color:var(--blue)">blue</b> is goals and assists, <b style="color:var(--gold)">gold</b> is shots, hits and blocks.</p>` : ""}`;
+  }
+  el.innerHTML = head + body;
+  const rq = document.getElementById("rq");
+  if (rq) rq.oninput = e => { rs.q = e.target.value; rs.shown = 30; document.getElementById("rlist").innerHTML = rankListHTML(); };
+  const sel = document.getElementById("rsort");
+  if (sel) sel.onchange = e => { rs.sort[rs.view] = e.target.value; rs.shown = 30; renderRank(); };
+}
+document.getElementById("v-rank").addEventListener("click", e => {
+  const s = e.target.closest("[data-seg]");
+  if (s) { if (s.dataset.seg === "rview") { rs.view = s.dataset.val; rs.shown = 30; rs.q = ""; } else rs.hv = s.dataset.val; return renderRank(); }
+  const c = e.target.closest("[data-pos]"); if (c) { rs.pos = c.dataset.pos; rs.shown = 30; return renderRank(); }
+  if (e.target.closest("[data-rmore]")) { rs.shown += 30; document.getElementById("rlist").innerHTML = rankListHTML(); }
 });
-let skPos = "ALL", skQuery = "";
-const skCols = [
-  { key: "projRank", label: "#", tip: "Rank by projected FP per game" },
-  { key: "name", label: "Player", left: true, cls: "name", fmt: nameCell },
-  { hs: true, key: "team", label: "Team", left: true },
-  { key: "pos", label: "Pos", left: true, fmt: posTag },
-  { hs: true, key: "gp", label: "GP", fmt: f0 },
-  { hs: true, key: "g", label: "G", fmt: f0 },
-  { hs: true, key: "a", label: "A", fmt: f0 },
-  { hs: true, key: "ppp", label: "PPP", fmt: f0 },
-  { hs: true, key: "sog", label: "SOG", fmt: f0 },
-  { hs: true, key: "hit", label: "HIT", fmt: f0 },
-  { hs: true, key: "blk", label: "BLK", fmt: f0 },
-  { hs: true, key: "pm", label: "+/-", fmt: pm },
-  { hs: true, key: "fp", label: "FP", fmt: f1 },
-  { hs: true, key: "fpg", label: "FP/GP", fmt: f2, tip: "Season fantasy points per game" },
-  { hs: true, key: "recFpg", label: "L" + C.recentDays, fmt: f2, tip: `FP per game, last ${C.recentDays} days` },
-  { key: "proj", label: "Proj", fmt: f2, cls: "fpg", tip: "Projected FP per game for the rest of the season" },
-  { key: "split", sort: "fpgP", label: "Split", left: true, fmt: splitBar, tip: "Blue = scoring, orange = peripherals. Sorts by peripheral FP/GP" },
-  { hs: true, key: "peri", label: "Peri %", fmt: pct, tip: "Share of FP from SOG/HIT/BLK - higher = steadier" },
-  { hs: true, key: "rosFp", label: "ROS FP", fmt: f0, tip: "Projected FP for the rest of the season" },
-  { hs: true, key: "rosVor", label: "VOR", fmt: v => sgn(v, f0), tip: "Rest-of-season value over a replacement-level player at his position" },
-];
-const isF = p => p === "C" || p === "LW" || p === "RW";
-const renderSk = makeTable(document.getElementById("skTable"), skCols, () => SK.filter(p => p.q &&
-  (skPos === "ALL" || p.pos === skPos || (skPos === "F" && isF(p.pos))) &&
-  (!skQuery || p.name.toLowerCase().includes(skQuery) || p.team.toLowerCase().includes(skQuery))), "proj");
-document.getElementById("skSearch").oninput = e => { skQuery = e.target.value.trim().toLowerCase(); renderSk(); };
-document.querySelectorAll("#posSeg button").forEach(b => b.onclick = () => {
-  skPos = b.dataset.pos; document.querySelectorAll("#posSeg button").forEach(x => x.classList.toggle("active", x === b)); renderSk();
-});
 
-let gQuery = "";
-const gCols = [
-  { key: "projRank", label: "#" },
-  { key: "name", label: "Goalie", left: true, cls: "name", fmt: nameCell },
-  { hs: true, key: "team", label: "Team", left: true },
-  { hs: true, key: "gp", label: "GP", fmt: f0 },
-  { hs: true, key: "gs", label: "GS", fmt: f0 },
-  { hs: true, key: "w", label: "W", fmt: f0 },
-  { hs: true, key: "svPct", label: "SV%", fmt: f3 },
-  { hs: true, key: "so", label: "SHO", fmt: f0 },
-  { hs: true, key: "saFor", label: "Shots/GP", fmt: f1, tip: "Shots faced per game - workload" },
-  { hs: true, key: "fpg", label: "FP/GP", fmt: f2 },
-  { hs: true, key: "noWin", label: "No-win", fmt: f2, tip: "FP per game from saves and GA only - his floor" },
-  { key: "proj", label: "Proj/Start", fmt: f2, cls: "fpg", tip: "Projected FP per start" },
-  { key: "share", label: "Starts", fmt: v => pct(v * 100), tip: "Share of his team's games he starts" },
-  { hs: true, key: "projTG", label: "Proj/Team GP", fmt: f2 },
-  { key: "rosFp", label: "ROS FP", fmt: f0 },
-  { hs: true, key: "rosVor", label: "VOR", fmt: v => sgn(v, f0) },
-];
-const renderG = makeTable(document.getElementById("gTable"), gCols, () => GO.filter(g => g.q &&
-  (!gQuery || g.name.toLowerCase().includes(gQuery) || g.team.toLowerCase().includes(gQuery))), "projTG");
-document.getElementById("gSearch").oninput = e => { gQuery = e.target.value.trim().toLowerCase(); renderG(); };
-
-const hvCols = [
-  { key: "name", label: "Player", left: true, cls: "name", fmt: nameCell },
-  { key: "pos", label: "Pos", left: true, fmt: posTag },
-  { hs: true, key: "team", label: "Team", left: true },
-  { key: "fpg", label: "FP/GP", fmt: (v, r) => `${f2(v)} <span class="muted">#${r.rank}</span>`, cls: "fpg" },
-  { key: "ppg", label: "NHL P/GP", fmt: (v, r) => `${f2(v)} <span class="muted">#${r.ppgRank}</span>` },
-  { key: "gap", label: "Gap", fmt: v => `<span class="${v > 0 ? "up" : "down"}">${v > 0 ? "+" : ""}${v}</span>`, tip: "Rank spots gained (or lost) with your scoring" },
-  { hs: true, key: "peri", label: "Peri %", fmt: pct },
-];
-const byGap = SK.filter(p => p.q).sort((a, b) => b.gap - a.gap);
-makeTable(document.getElementById("hvUp"), hvCols, () => byGap.slice(0, 25), "gap");
-makeTable(document.getElementById("hvDown"), hvCols, () => byGap.slice(-25), "gap", true);
-
-// ---------- picker ----------
+// ---------- player search ----------
 const ALL = [...P.values()].sort((a, b) => (b.rosFp || 0) - (a.rosFp || 0));
-function makePicker(root, placeholder, onPick) {
-  root.innerHTML = `<input type="search" placeholder="${placeholder}" autocomplete="off" autocorrect="off" spellcheck="false"><div class="sugg" hidden></div>`;
+function picker(root, placeholder, onPick) {
+  root.innerHTML = `<div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg>
+    <input type="search" placeholder="${placeholder}" autocomplete="off" autocorrect="off" spellcheck="false"></div><div class="sugg" hidden></div>`;
+  root.style.position = "relative";
   const inp = root.querySelector("input"), box = root.querySelector(".sugg");
   inp.oninput = () => {
     const q = inp.value.trim().toLowerCase();
     if (q.length < 2) { box.hidden = true; return; }
-    const m = ALL.filter(p => p.name.toLowerCase().includes(q) || p.team.toLowerCase() === q).slice(0, 8);
-    box.innerHTML = m.map(p => `<button data-id="${p.id}"><b>${esc(p.name)}</b><span>${esc(p.team)} · ${p.pos} · ${f2(projTG(p))} proj FP/gm · ${f0(p.rosFp)} ROS FP</span></button>`).join("")
-      || `<div class="none">No player found</div>`;
+    const m = ALL.filter(p => p.name.toLowerCase().includes(q) || p.team.toLowerCase() === q).slice(0, 6);
+    box.innerHTML = m.length ? m.map(p => `<button class="row" data-pick="${p.id}"><span class="who"><b>${esc(p.name)}</b>${meta(p)}</span>
+      <span class="val"><b>${f2(projTG(p))}</b><small>per game</small></span></button>`).join("") : `<div class="empty">No player found.</div>`;
     box.hidden = false;
   };
-  box.onclick = e => { const b = e.target.closest("button"); if (!b) return; onPick(+b.dataset.id); inp.value = ""; box.hidden = true; inp.blur(); };
+  box.onclick = e => { const b = e.target.closest("[data-pick]"); if (!b) return; onPick(+b.dataset.pick); inp.value = ""; box.hidden = true; inp.blur(); };
   document.addEventListener("click", e => { if (!root.contains(e.target)) box.hidden = true; });
 }
 
@@ -1118,221 +1202,227 @@ let cmp = store.get("cmp", []).filter(id => P.has(id));
 function addCompare(id) {
   const p = P.get(id); if (!p) return;
   if (!cmp.includes(id)) { if (cmp.length >= 4) cmp.shift(); cmp.push(id); }
-  store.set("cmp", cmp); renderCompare(); toast(`${p.name} added to Compare`);
+  store.set("cmp", cmp); renderCompare(); toast(`Added ${p.name} to Compare`);
 }
-const SKO = p => !isG(p), GOO = p => isG(p);
-const CMP_ROWS = [
-  { label: "Projected FP per game", get: p => projTG(p), fmt: f2, better: "hi", tip: "Goalies: per team game (per start × start share)" },
-  { label: "Season FP / GP", get: p => p.fpg, fmt: f2, better: "hi" },
-  { label: `Last ${C.recentDays} days FP / GP`, get: p => isG(p) ? p.recFpgs : p.recFpg, fmt: f2, better: "hi", note: "goalies: per start" },
-  { label: "Scoring vs peripherals", get: p => isG(p) ? null : 1, fmt: (v, p) => isG(p) ? "—" : splitBar(null, p) },
-  { label: "Peripheral share (stability)", get: p => isG(p) ? null : p.peri, fmt: pct },
-  { label: "Games played", get: p => p.gp, fmt: f0 },
-  { label: "Games left this week", get: p => p.wk, fmt: f0, better: "hi" },
-  { label: "Projected FP this week", get: p => p.wkFp, fmt: f1, better: "hi" },
-  { label: "Games next week", get: p => p.nxt, fmt: f0, better: "hi" },
-  { label: "Projected FP next week", get: p => p.nxtFp, fmt: f1, better: "hi" },
-  { label: "Games left in season", get: p => p.ros, fmt: f0, better: "hi" },
-  { label: "Rest-of-season FP", get: p => p.rosFp, fmt: f0, better: "hi" },
-  { label: "Value over replacement (ROS)", get: p => p.rosVor, fmt: v => sgn(v, f0), better: "hi" },
-  { label: "Playoff-window FP", get: p => p.poFp, fmt: f0, better: "hi" },
-  { label: "Shooting % (normal)", get: p => isG(p) ? null : p.sh, fmt: (v, p) => isG(p) || nz(v) ? "—" : `${f1(v)}% <span class="muted">(${f1(p.shBase)}%)</span>` },
-  { label: "Position rank", get: p => isG(p) ? p.projRank : p.posRank, fmt: v => nz(v) ? "—" : "#" + v, better: "lo" },
-  { label: "Goalie: share of starts", get: p => isG(p) ? p.share * 100 : null, fmt: pct, better: "hi" },
-  { label: "Goalie: projected FP per start", get: p => isG(p) ? p.proj : null, fmt: f2, better: "hi" },
-  { label: "Goalie: save %", get: p => isG(p) ? p.svPct : null, fmt: f3, better: "hi" },
+const GROUPS = [
+  { title: "Value", rows: [
+    ["Projected points per game", p => projTG(p), f2, "hi"],
+    ["Points left this season", p => p.rosFp, f0, "hi"],
+    ["Value over a free agent", p => p.rosVor, v => sgn(v, f0), "hi"],
+    ["Your playoff weeks", p => D.week.ps ? p.poFp : null, f0, "hi"],
+  ]},
+  { title: "Schedule", rows: [
+    ["Games left this week", p => p.wk, f0, "hi"],
+    ["Points expected this week", p => p.wkFp, f1, "hi"],
+    ["Games next week", p => p.nxt, f0, "hi"],
+    ["Points expected next week", p => p.nxtFp, f1, "hi"],
+  ]},
+  { title: "Form and style", rows: [
+    ["Season points per game", p => p.fpg, f2, "hi"],
+    [`Last ${C.recentDays} days per game`, p => isG(p) ? null : p.recFpg, f2, "hi"],
+    ["From shots, hits and blocks", p => isG(p) ? null : p.peri, pct, null],
+    ["Shooting % (usual)", p => isG(p) ? null : p.sh, (v, p) => nz(v) ? DASH : `${f1(v)}%<small>usually ${f1(p.shBase)}%</small>`, null],
+    ["Rank at position", p => isG(p) ? p.projRank : p.posRank, v => nz(v) ? DASH : "#" + v, "lo"],
+  ]},
+  { title: "Goalies", goalie: true, rows: [
+    ["Share of starts", p => isG(p) ? p.share * 100 : null, pct, "hi"],
+    ["Projected points per start", p => isG(p) ? p.proj : null, f2, "hi"],
+    ["Save %", p => isG(p) ? p.svPct : null, f3, "hi"],
+  ]},
 ];
-makePicker(document.getElementById("cmpPicker"), "Add a player to compare...", addCompare);
-document.getElementById("cmpClear").onclick = () => { cmp = []; store.set("cmp", cmp); renderCompare(); };
 function renderCompare() {
-  const el = document.getElementById("cmpTable");
+  const el = document.getElementById("v-compare");
   const ps = cmp.map(id => P.get(id)).filter(Boolean);
-  if (!ps.length) { el.innerHTML = `<tbody><tr><td class="muted" style="text-align:left;padding:18px 4px">No players yet. Search above, or tap a name in Rankings or <b>+</b> in Pulse.</td></tr></tbody>`; return; }
-  const anyG = ps.some(isG), anyS = ps.some(p => !isG(p));
-  const head = `<tr><th></th>${ps.map(p => `<th><div class="ph"><b>${esc(p.name)}</b><span>${esc(p.team)} · ${p.pos}</span></div>
-    <div class="mini"><button data-tg="give" data-id="${p.id}">Give</button><button data-tg="get" data-id="${p.id}">Get</button><button class="x" data-rm="${p.id}" aria-label="Remove">✕</button></div></th>`).join("")}</tr>`;
-  const rows = CMP_ROWS.filter(r => {
-    if (r.label.startsWith("Goalie:")) return anyG;
-    if (["Scoring vs peripherals", "Peripheral share (stability)", "Shooting % (normal)"].includes(r.label)) return anyS;
-    return true;
-  }).map(r => {
-    const vals = ps.map(p => r.get(p));
-    let best = -1;
-    if (r.better && ps.length > 1) {
-      const nums = vals.map((v, i) => [v, i]).filter(([v]) => !nz(v));
-      if (nums.length > 1) best = nums.reduce((b, c) => (r.better === "hi" ? c[0] > b[0] : c[0] < b[0]) ? c : b)[1];
-      if (nums.length > 1 && nums.every(([v]) => v === nums[0][0])) best = -1;
-    }
-    return `<tr><td title="${esc(r.tip || "")}">${r.label}${r.note ? ` <span class="muted">(${r.note})</span>` : ""}</td>${ps.map((p, i) =>
-      `<td class="${i === best ? "best" : ""}">${r.fmt(vals[i], p)}</td>`).join("")}</tr>`;
-  }).join("");
-  el.innerHTML = `<thead>${head}</thead><tbody>${rows}</tbody>`;
-  el.querySelectorAll("[data-rm]").forEach(b => b.onclick = () => { cmp = cmp.filter(id => id !== +b.dataset.rm); store.set("cmp", cmp); renderCompare(); });
-  el.querySelectorAll("[data-tg]").forEach(b => b.onclick = () => { addTrade(b.dataset.tg, +b.dataset.id); });
+  const n = ps.length;
+  let body = "";
+  if (!n) {
+    body = `<div class="list" style="margin-top:14px"><div class="empty">Search for a player above, or tap any player in the app and choose <b>Compare</b>. You can line up to four side by side.</div></div>`;
+  } else {
+    const cols = `grid-template-columns:repeat(${n},minmax(0,1fr))`;
+    body = `<div class="chead" style="${cols}">${ps.map(p => `<div class="pcol"><button class="x" data-rm="${p.id}" aria-label="Remove ${esc(p.name)}">✕</button>
+      <b data-pid="${p.id}" style="cursor:pointer;padding-right:14px">${esc(p.name)}</b>${meta(p)}</div>`).join("")}</div>`;
+    GROUPS.forEach(gr => {
+      if (gr.goalie && !ps.some(isG)) return;
+      const rows = gr.rows.map(([label, get, fmt, better]) => {
+        const vals = ps.map(get);
+        if (vals.every(nz)) return "";
+        const nums = vals.filter(v => !nz(v));
+        const max = Math.max(...nums.map(Math.abs), 1e-9);
+        let best = -1;
+        if (better && n > 1 && nums.length > 1 && !nums.every(v => v === nums[0])) {
+          const target = better === "hi" ? Math.max(...nums) : Math.min(...nums);
+          best = vals.findIndex(v => v === target);
+        }
+        return `<div class="mrow"><div class="ml">${label}</div><div class="mv" style="${cols}">${vals.map((v, i) =>
+          `<div class="mc ${i === best ? "best" : ""}"><b>${fmt(v, ps[i])}</b>${better && !nz(v) && n > 1 ? `<div class="bar"><i style="width:${better === "lo" ? (Math.min(...nums) / v) * 100 : Math.max(0, v) / max * 100}%"></i></div>` : ""}</div>`).join("")}</div></div>`;
+      }).join("");
+      if (rows) body += `<div class="mgroup"><h3>${gr.title}</h3>${rows}</div>`;
+    });
+    body += `<div class="actions"><button class="btn ghost" id="cClear">Clear all</button></div>`;
+  }
+  el.innerHTML = `<h1>Compare</h1><p class="intro">The best number in each row is highlighted in blue.</p><div id="cPick"></div>${body}`;
+  picker(document.getElementById("cPick"), n >= 4 ? "Add a player (replaces the first)" : "Add a player", addCompare);
+  el.querySelectorAll("[data-rm]").forEach(b => b.onclick = () => { cmp = cmp.filter(x => x !== +b.dataset.rm); store.set("cmp", cmp); renderCompare(); });
+  const cc = document.getElementById("cClear"); if (cc) cc.onclick = () => { cmp = []; store.set("cmp", cmp); renderCompare(); };
 }
 
 // ---------- TRADE ----------
 let trade = { give: store.get("give", []).filter(id => P.has(id)), get: store.get("get", []).filter(id => P.has(id)) };
+const saveTrade = () => { store.set("give", trade.give); store.set("get", trade.get); };
 function addTrade(side, id) {
   const other = side === "give" ? "get" : "give";
   trade[other] = trade[other].filter(x => x !== id);
   if (!trade[side].includes(id)) trade[side].push(id);
-  store.set("give", trade.give); store.set("get", trade.get);
-  renderTrade(); toast(`${P.get(id).name} → ${side === "give" ? "You give" : "You get"}`);
+  saveTrade(); renderTrade(); toast(`Added ${P.get(id).name} to ${side === "give" ? "You give" : "You get"}`);
 }
-makePicker(document.getElementById("givePicker"), "Add a player you'd give...", id => addTrade("give", id));
-makePicker(document.getElementById("getPicker"), "Add a player you'd get...", id => addTrade("get", id));
-function sideList(side) {
-  const ps = trade[side].map(id => P.get(id)).filter(Boolean);
-  return ps.length ? ps.map(p => `<div class="prow"><div class="pn"><b>${esc(p.name)}</b><span>${esc(p.team)} · ${p.pos} · ${f2(projTG(p))} proj/gm</span></div>
-    <div class="pv"><b>${f0(p.rosFp)}</b> FP<small>VOR ${sgn(p.rosVor, f0)}</small></div>
-    <button class="add" data-trm="${side}:${p.id}" aria-label="Remove">✕</button></div>`).join("")
-    : `<div class="empty">No players yet.</div>`;
-}
-function sideTotals(side) {
-  const ps = trade[side].map(id => P.get(id)).filter(Boolean);
+function totals(ids) {
+  const ps = ids.map(id => P.get(id)).filter(Boolean);
   const sum = k => ps.reduce((s, p) => s + (p[k] || 0), 0);
   const skFp = ps.filter(p => !isG(p)).reduce((s, p) => s + p.rosFp, 0);
-  const peri = skFp > 0 ? ps.filter(p => !isG(p)).reduce((s, p) => s + p.peri * p.rosFp, 0) / skFp : null;
-  const val = ps.reduce((s, p) => s + Math.max(0, p.rosVor || 0), 0);
-  return { ps, n: ps.length, rosFp: sum("rosFp"), rosVor: val, wkFp: sum("wkFp"), nxtFp: sum("nxtFp"), poFp: sum("poFp"), peri };
+  return { ps, n: ps.length, val: ps.reduce((s, p) => s + Math.max(0, p.rosVor || 0), 0), rosFp: sum("rosFp"),
+    wkFp: sum("wkFp"), nxtFp: sum("nxtFp"), poFp: sum("poFp"),
+    peri: skFp > 0 ? ps.filter(p => !isG(p)).reduce((s, p) => s + p.peri * p.rosFp, 0) / skFp : null };
 }
+function rinkSVG(x) {
+  // x from -1 (their end) to 1 (your end)
+  const px = 300 + x * 236;
+  return `<svg class="rink" viewBox="0 0 600 150" role="img" aria-label="Trade meter">
+    <rect x="3" y="3" width="594" height="144" rx="64" fill="var(--surface)" stroke="var(--line)" stroke-width="4"/>
+    <line x1="44" y1="9" x2="44" y2="141" stroke="var(--red)" stroke-width="2" opacity=".7"/>
+    <line x1="556" y1="9" x2="556" y2="141" stroke="var(--red)" stroke-width="2" opacity=".7"/>
+    <path d="M44 61 a14 14 0 0 1 0 28" fill="var(--blue-soft)" stroke="var(--red)" stroke-width="1.5" opacity=".9"/>
+    <path d="M556 61 a14 14 0 0 0 0 28" fill="var(--blue-soft)" stroke="var(--red)" stroke-width="1.5" opacity=".9"/>
+    <rect x="200" y="5" width="7" height="140" fill="var(--blue)" opacity=".85"/>
+    <rect x="393" y="5" width="7" height="140" fill="var(--blue)" opacity=".85"/>
+    <rect x="297" y="5" width="6" height="140" fill="var(--red)" opacity=".85"/>
+    <circle cx="300" cy="75" r="30" fill="none" stroke="var(--blue)" stroke-width="2" opacity=".6"/>
+    <circle cx="120" cy="75" r="26" fill="none" stroke="var(--red)" stroke-width="1.5" opacity=".45"/>
+    <circle cx="480" cy="75" r="26" fill="none" stroke="var(--red)" stroke-width="1.5" opacity=".45"/>
+    <g class="puck" style="transform:translateX(${px - 300}px)">
+      <ellipse cx="300" cy="79" rx="17" ry="7" fill="#000" opacity=".18"/>
+      <ellipse cx="300" cy="75" rx="16" ry="9" fill="#111820"/>
+      <ellipse cx="300" cy="72" rx="16" ry="7" fill="#2a3442"/>
+    </g>
+  </svg>`;
+}
+function sideHTML(side, title) {
+  const ps = trade[side].map(id => P.get(id)).filter(Boolean);
+  return `<div class="side"><h2>${title}</h2>
+    ${ps.length ? `<div class="list">${ps.map(p => `<div class="row" style="cursor:default"><span class="who" data-pid="${p.id}" style="cursor:pointer"><b>${esc(p.name)}</b>${meta(p)}</span>
+      <span class="val"><b>${f0(p.rosFp)}</b><small>points left</small></span>
+      <button class="rm" data-trm="${side}:${p.id}" aria-label="Remove ${esc(p.name)}">✕</button></div>`).join("")}</div>` : ""}
+    <div class="addwrap" id="pick-${side}"></div></div>`;
+}
+let lastPuck = 0;
 function renderTrade() {
-  document.getElementById("giveList").innerHTML = sideList("give");
-  document.getElementById("getList").innerHTML = sideList("get");
-  document.querySelectorAll("[data-trm]").forEach(b => b.onclick = () => {
-    const [side, id] = b.dataset.trm.split(":"); trade[side] = trade[side].filter(x => x !== +id);
-    store.set("give", trade.give); store.set("get", trade.get); renderTrade();
-  });
-  const v = document.getElementById("verdict");
-  const G = sideTotals("give"), R = sideTotals("get");
+  const el = document.getElementById("v-trade");
+  const G = totals(trade.give), R = totals(trade.get);
+  let verdict;
   if (!G.n || !R.n) {
-    v.innerHTML = `<div class="vhead">Build a trade</div><div class="vsub">Add at least one player on each side to see the verdict.</div>`;
-    return;
+    verdict = `<div class="verdict">${rinkSVG(0)}<div class="ends"><span>Their end</span><span>Your end</span></div>
+      <div class="vh">Build a trade</div><p class="vs">Add at least one player on each side. The puck slides toward whoever comes out ahead.</p></div>`;
+  } else {
+    const net = R.val - G.val;
+    const scale = Math.max(40, 0.6 * (G.val + R.val));
+    const fair = Math.max(8, 0.08 * Math.max(G.val, R.val));
+    const x = Math.max(-1, Math.min(1, net / scale));
+    const cls = Math.abs(net) <= fair ? "" : net > 0 ? "win" : "lose";
+    const head = Math.abs(net) <= fair ? "Even trade" : net > 0 ? `You win by ${f0(net)} points` : `You lose by ${f0(-net)} points`;
+    const facts = [];
+    facts.push(`Rest of the season: ${sgn(R.rosFp - G.rosFp, f0)} total points for you.`);
+    const wk = R.wkFp - G.wkFp, nw = R.nxtFp - G.nxtFp, po = R.poFp - G.poFp;
+    if (Math.abs(wk) >= 3) facts.push(`This week it ${wk > 0 ? "adds" : "costs"} about ${f1(Math.abs(wk))} points.`);
+    if (Math.abs(nw) >= 3) facts.push(`Next week it ${nw > 0 ? "adds" : "costs"} about ${f1(Math.abs(nw))} points.`);
+    if (D.week.ps && Math.abs(po) >= 3) facts.push(`In your playoff weeks (${fd(D.week.ps)} to ${fd(D.week.pe)}) it ${po > 0 ? "adds" : "costs"} about ${f0(Math.abs(po))} points.`);
+    if (G.peri !== null && R.peri !== null && Math.abs(R.peri - G.peri) >= 8)
+      facts.push(R.peri > G.peri ? `You get steadier production: ${pct(R.peri)} from shots, hits and blocks, versus ${pct(G.peri)}.`
+                                 : `You get streakier production: ${pct(R.peri)} from shots, hits and blocks, versus ${pct(G.peri)}.`);
+    const lucky = R.ps.filter(p => !isG(p) && !nz(p.shDiff) && p.shDiff >= 5);
+    if (lucky.length) facts.push(`${lucky.map(p => esc(p.name)).join(" and ")} ${lucky.length > 1 ? "are" : "is"} shooting well above normal. Expect fewer goals.`);
+    const due = R.ps.filter(p => !isG(p) && !nz(p.shDiff) && p.shDiff <= -4);
+    if (due.length) facts.push(`${due.map(p => esc(p.name)).join(" and ")} ${due.length > 1 ? "are" : "is"} shooting below normal and could heat up.`);
+    const below = [...G.ps, ...R.ps].filter(p => (p.rosVor || 0) <= 0);
+    if (below.length) facts.push(`${below.map(p => esc(p.name)).join(" and ")} ${below.length > 1 ? "count" : "counts"} as zero: a free agent would score about the same.`);
+    if (G.n !== R.n) facts.push(R.n > G.n ? `You'll need to drop ${plural(R.n - G.n, "player")} to make room. That's already factored in.` : `You free up ${plural(G.n - R.n, "roster spot")}. That's already factored in.`);
+    const tr = (l, a, b, f) => `<tr><td>${l}</td><td>${f(a)}</td><td>${f(b)}</td><td>${sgn(b - a, f)}</td></tr>`;
+    const summary = [`Trade check, ${D.generated}`, `Give: ${G.ps.map(p => p.name).join(", ")}`, `Get: ${R.ps.map(p => p.name).join(", ")}`,
+      `${head}. Value over a free agent: ${Math.round(G.val)} given, ${Math.round(R.val)} received.`].join("\n");
+    verdict = `<div class="verdict">${rinkSVG(x)}<div class="ends"><span>Their end</span><span>Your end</span></div>
+      <div class="vh ${cls}">${head}</div>
+      <p class="vs">Measured in points above what a free agent would give you, for the rest of the season.</p>
+      <ul class="facts">${facts.map(f => `<li>${f}</li>`).join("")}</ul>
+      <details class="more-d"><summary>See the numbers</summary>
+        <table class="dt"><thead><tr><th></th><th>Give</th><th>Get</th><th>Change</th></tr></thead><tbody>
+        ${tr("Value over a free agent", G.val, R.val, f0)}
+        ${tr("Points left this season", G.rosFp, R.rosFp, f0)}
+        ${tr("Points this week", G.wkFp, R.wkFp, f1)}
+        ${tr("Points next week", G.nxtFp, R.nxtFp, f1)}
+        ${D.week.ps ? tr("Your playoff weeks", G.poFp, R.poFp, f0) : ""}
+        </tbody></table></details>
+      <div class="actions"><button class="btn primary" id="tCopy">Copy for league chat</button><button class="btn" id="tSwap">Swap sides</button><button class="btn ghost" id="tClear">Clear</button></div>
+      <textarea id="tSum" hidden>${esc(summary)}</textarea></div>`;
+    lastPuck = x;
   }
-  const net = R.rosVor - G.rosVor;
-  const scale = Math.max(40, 0.5 * (Math.abs(G.rosVor) + Math.abs(R.rosVor)));
-  const fairBand = Math.max(8, 0.08 * Math.max(Math.abs(G.rosVor), Math.abs(R.rosVor)));
-  const head = Math.abs(net) <= fairBand ? "Fair trade" : net > 0 ? "You win this trade" : "You lose this trade";
-  const color = Math.abs(net) <= fairBand ? "var(--ice)" : net > 0 ? "var(--good)" : "var(--bad)";
-  const pos = 50 + Math.max(-48, Math.min(48, net / scale * 50));
-
-  const ins = [];
-  ins.push(`Rest-of-season value over replacement: <b style="color:${color}">${sgn(net, f0)} FP</b> for you (raw projected FP: ${sgn(R.rosFp - G.rosFp, f0)}).`);
-  const below = [...G.ps, ...R.ps].filter(p => (p.rosVor || 0) <= 0);
-  if (below.length) ins.push(`${below.map(p => esc(p.name)).join(", ")} ${below.length > 1 ? "are" : "is"} at or below replacement level, so ${below.length > 1 ? "they count" : "he counts"} as 0. You could get similar production from free agents.`);
-  const wk = R.wkFp - G.wkFp, nw = R.nxtFp - G.nxtFp;
-  if (Math.abs(wk) >= 3) ins.push(`This week: ${wk > 0 ? "helps" : "hurts"} you by about <b>${f1(Math.abs(wk))} FP</b> (schedule + projections).`);
-  if (Math.abs(nw) >= 3) ins.push(`Next week: ${nw > 0 ? "+" : "−"}${f1(Math.abs(nw))} FP.`);
-  const po = R.poFp - G.poFp;
-  if (D.week.ps && Math.abs(po) >= 3) ins.push(`Playoff window (${fd(D.week.ps)} – ${fd(D.week.pe)}): ${po > 0 ? "+" : "−"}${f0(Math.abs(po))} FP for you.`);
-  if (G.peri !== null && R.peri !== null && Math.abs(R.peri - G.peri) >= 8)
-    ins.push(R.peri > G.peri ? `You're getting <b>steadier</b> production: ${pct(R.peri)} of it from shots/hits/blocks vs ${pct(G.peri)}.`
-                             : `You're getting <b>streakier</b> production: only ${pct(R.peri)} from shots/hits/blocks vs ${pct(G.peri)}. More depends on goals and assists.`);
-  const lucky = R.ps.filter(p => !isG(p) && !nz(p.shDiff) && p.shDiff >= 5);
-  if (lucky.length) ins.push(`Heads up: ${lucky.map(p => esc(p.name)).join(", ")} ${lucky.length > 1 ? "are" : "is"} shooting well above normal. Expect fewer goals going forward.`);
-  const due = R.ps.filter(p => !isG(p) && !nz(p.shDiff) && p.shDiff <= -4);
-  if (due.length) ins.push(`Buy-low bonus: ${due.map(p => esc(p.name)).join(", ")} ${due.length > 1 ? "are" : "is"} shooting below normal and could pick up.`);
-  const gk = [...G.ps, ...R.ps].filter(isG);
-  if (gk.length) ins.push(`Goalie value depends on starts: ${gk.map(g => `${esc(g.name)} ${pct(g.share * 100)}`).join(", ")}. A change in the crease changes this verdict fast.`);
-  if (G.n !== R.n) ins.push(`${R.n > G.n ? "You receive more players, so you'll need to drop " + (R.n - G.n) : "You open " + (G.n - R.n) + " roster spot" + (G.n - R.n > 1 ? "s" : "")} — already counted: VOR measures each player against a free-agent-level replacement.`);
-
-  const row = (label, a, b, fmt, signed) => `<tr><td>${label}</td><td>${fmt(a)}</td><td>${fmt(b)}</td><td class="${b - a > 0 ? "up" : b - a < 0 ? "down" : ""}">${signed(b - a)}</td></tr>`;
-  const summary = [`Trade check (${D.generated})`, `Give: ${G.ps.map(p => p.name).join(", ")}`, `Get: ${R.ps.map(p => p.name).join(", ")}`,
-    `${head}: ${net > 0 ? "+" : ""}${Math.round(net)} FP value over replacement, ${R.rosFp - G.rosFp > 0 ? "+" : ""}${Math.round(R.rosFp - G.rosFp)} projected FP rest of season.`].join("\n");
-
-  v.innerHTML = `<div class="vhead" style="color:${color}">${head}</div>
-    <div class="vsub">${sgn(net, f0)} FP of rest-of-season value over replacement</div>
-    <div class="meter"><i style="left:${pos}%"></i></div>
-    <div class="mlab"><span>They win</span><span>Even</span><span>You win</span></div>
-    <div class="scroll"><table class="vt"><thead><tr><th></th><th>Give</th><th>Get</th><th>Net</th></tr></thead><tbody>
-      ${row("Rest-of-season FP", G.rosFp, R.rosFp, f0, v => sgn(v, f0))}
-      ${row("Trade value (VOR)", G.rosVor, R.rosVor, f0, v => sgn(v, f0))}
-      ${row("FP this week", G.wkFp, R.wkFp, f1, v => sgn(v, f1))}
-      ${row("FP next week", G.nxtFp, R.nxtFp, f1, v => sgn(v, f1))}
-      ${D.week.ps ? row("Playoff-window FP", G.poFp, R.poFp, f0, v => sgn(v, f0)) : ""}
-      <tr><td>Peripheral share</td><td>${pct(G.peri)}</td><td>${pct(R.peri)}</td><td></td></tr>
-    </tbody></table></div>
-    <ul class="insights">${ins.map(i => `<li>${i}</li>`).join("")}</ul>
-    <div class="btns"><button class="btn primary" id="tCopy">Copy summary</button><button class="btn" id="tSwap">Swap sides</button><button class="btn" id="tClear">Clear</button></div>`;
-  document.getElementById("tCopy").onclick = async () => {
-    try { await navigator.clipboard.writeText(summary); toast("Summary copied"); } catch (e) { toast("Couldn't copy on this browser"); }
-  };
-  document.getElementById("tSwap").onclick = () => { trade = { give: trade.get, get: trade.give }; store.set("give", trade.give); store.set("get", trade.get); renderTrade(); };
-  document.getElementById("tClear").onclick = () => { trade = { give: [], get: [] }; store.set("give", []); store.set("get", []); renderTrade(); };
+  el.innerHTML = `<h1>Trade</h1><p class="intro">Line up a trade and see who comes out ahead, counting position scarcity, schedule and roster spots.</p>
+    <div class="sides">${sideHTML("give", "You give")}${sideHTML("get", "You get")}</div>${verdict}`;
+  picker(document.getElementById("pick-give"), "Add a player you'd give", id => addTrade("give", id));
+  picker(document.getElementById("pick-get"), "Add a player you'd get", id => addTrade("get", id));
+  el.querySelectorAll("[data-trm]").forEach(b => b.onclick = () => {
+    const [s, id] = b.dataset.trm.split(":"); trade[s] = trade[s].filter(x => x !== +id); saveTrade(); renderTrade();
+  });
+  const c = document.getElementById("tCopy");
+  if (c) c.onclick = async () => { try { await navigator.clipboard.writeText(document.getElementById("tSum").value); toast("Copied for league chat"); } catch (e) { toast("Copying isn't allowed in this browser"); } };
+  const sw = document.getElementById("tSwap"); if (sw) sw.onclick = () => { trade = { give: trade.get, get: trade.give }; saveTrade(); renderTrade(); };
+  const cl = document.getElementById("tClear"); if (cl) cl.onclick = () => { trade = { give: [], get: [] }; saveTrade(); renderTrade(); };
 }
 
 // ---------- GUIDE ----------
 function renderGuide() {
-  const chip = ([k, v]) => `<span class="chip ${v < 0 ? "neg" : ""}">${k} <b>${v}</b></span>`;
   const s = Object.fromEntries(C.skaterScoring);
+  const pts = arr => `<div class="pts">${arr.map(([k, v]) => `<span class="${v < 0 ? "neg" : ""}">${k} <b>${v}</b></span>`).join("")}</div>`;
   const slots = Object.entries(C.slots).map(([k, v]) => `${v} ${k}`).join(", ");
-  const repl = Object.entries(C.repl).map(([k, v]) => `<span>${k}</span><span>${f2(v)} FP per ${k === "G" ? "team game" : "game"}</span>`).join("");
   const W = D.week;
-  document.getElementById("guide").innerHTML = `
-  <h2>How to read this app</h2>
-  <p class="lede">Everything here is built from public NHL stats, scored with your Yahoo league's settings. It rebuilds itself every morning around 5 AM (last update: ${D.generated}).</p>
-
-  <h3>Your league's scoring</h3>
-  <div class="chips">${C.skaterScoring.map(chip).join("")}</div>
-  <div class="chips">${C.goalieScoring.map(chip).join("")}</div>
-  <p>Hits and blocks matter a lot here: <b>1 goal = ${f0(s.G / s.HIT)} hits = ${f1(s.G / s.BLK)} blocks = ${f0(s.G / s.SOG)} shots</b>. A defenceman who hits and blocks a lot can outscore a 40-point winger. For goalies, one goal against costs about as much as ${f1(0.85 / 0.2)} saves, so goalies who face lots of shots score well even in losses.</p>
-
-  <h3>The pages</h3>
-  <dl>
-    <dt>Pulse</dt><dd>Your weekly briefing: how many games each team has left this week and next, players worth streaming, goalie starts, who's hot or cold over the last ${C.recentDays} days, and shooting-luck flags. On Sundays it switches to next week.</dd>
-    <dt>Rankings</dt><dd><b>Skaters</b> and <b>Goalies</b> ranked by projected fantasy points. <b>Hidden Value</b> lists players your scoring rates much higher (or lower) than plain NHL points do: your edge over league-mates who draft by points. On a phone only the key columns show; turn the phone sideways or use a computer for the full table.</dd>
-    <dt>Compare</dt><dd>Up to 4 players side by side. The best value in each row is green. Players stay saved on this device.</dd>
-    <dt>Trade</dt><dd>Build a mock trade. The verdict uses rest-of-season value over replacement, then adds notes on this week, next week, the playoff window, stability and luck.</dd>
-  </dl>
-
-  <h3>Glossary</h3>
-  <dl>
-    <dt>FP</dt><dd>Fantasy points with your league's scoring.</dd>
-    <dt>FP/GP</dt><dd>Fantasy points per game played this season.</dd>
-    <dt>L${C.recentDays}</dt><dd>FP per game over the last ${C.recentDays} days: recent form.</dd>
-    <dt>Proj</dt><dd>Projected FP per game for the rest of the season (see "How projections work").</dd>
-    <dt>ROS FP</dt><dd>Rest of season: projected FP per game × games left on his team's schedule. Assumes he plays every game (no injury info).</dd>
-    <dt>Replacement level</dt><dd>What you could get from the free-agent pool. With ${C.leagueTeams} teams starting ${slots}, it's the projection of the first player outside the starters at each position:
-      <div class="kv" style="margin-top:6px">${repl}</div></dd>
-    <dt>VOR (value over replacement)</dt><dd>How much better than replacement level a player is, added up over the rest of the season. This is the fairest way to compare players at different positions and judge trades. A great D-man can be worth more than a winger with more points because good D are scarcer. In the Trade page, players below replacement count as 0. That's why two average players usually don't beat one star: you could pick up the average guys as free agents.</dd>
-    <dt>Split bar / Peri %</dt><dd>Blue = FP from scoring (G, A, PPP, SHG, SHA, GWG, +/-). Orange = FP from peripherals (shots, hits, blocks). Peri % is the orange share. Peripherals are steady week to week; scoring is streaky. Higher Peri % = safer floor.</dd>
-    <dt>Gap (Hidden Value)</dt><dd>How many rank spots a player moves when you rank by your FP/GP instead of NHL points per game.</dd>
-    <dt>Shooting % and luck</dt><dd>Goals divided by shots, compared to his normal (last season if he had 60+ shots, otherwise the league average for forwards or defence). Way above normal = likely to cool off (sell high). Way below = likely to heat up (buy low). Shown once he has 30+ shots.</dd>
-    <dt>Starts / share</dt><dd>The % of his team's games a goalie starts. Projected starts = team games × share.</dd>
-    <dt>No-win FP</dt><dd>A goalie's FP per game from saves and goals against only. His floor when he loses.</dd>
-    <dt>Playoff window</dt><dd>${W.ps ? `${fd(W.ps)} – ${fd(W.pe)}` : "Not set"}. By default, the last 3 weeks of the NHL regular season. Edit PLAYOFF_START / PLAYOFF_END in the script to match your league.</dd>
-  </dl>
-
-  <h3>How projections work</h3>
-  <p>Early-season numbers are noisy, so the projection blends three things:</p>
-  <span class="formula">1. <b>This season</b> FP/GP, weighted by games played<br>
-  2. <b>Last season</b> FP/GP, counted as if it were ${C.priorGames} games of this season (rookies get a cautious baseline instead)<br>
-  3. <b>Last ${C.recentDays} days</b> form, nudging the result ${Math.round(C.recentWeight * 100)}%</span>
-  <p>As the season goes on, this season's numbers take over. Goalies use the same idea per start (last season counts as ${C.goaliePriorStarts} starts), multiplied by their share of starts.</p>
-
-  <h3>Limits</h3>
-  <ul>
-    <li>No injury, line-combo or goalie-confirmation data. Check Yahoo or Daily Faceoff before setting lineups.</li>
-    <li>Positions are NHL positions, not Yahoo eligibility (some players qualify at two spots on Yahoo).</li>
-    <li>Not connected to your Yahoo league yet, so it doesn't know who's on a roster. "Stream targets" assumes players ranked outside the top ${C.leagueTeams * C.rosteredPerTeam} are available.</li>
-    ${C.hasLast ? "" : "<li><b>Last season's stats didn't load on this run</b>, so projections lean on this season only.</li>"}
-    ${C.hasRecent ? "" : "<li><b>Recent-form stats didn't load on this run</b>, so hot/cold lists are empty.</li>"}
-    ${C.hasSchedule ? "" : "<li><b>Schedules didn't load on this run</b>, so weekly and rest-of-season numbers are estimates.</li>"}
-  </ul>
-
-  <h3>Settings</h3>
-  <p>League size, roster slots, scoring and the playoff window are at the top of <code>fantasy_fp_rankings.py</code> under "YOUR LEAGUE SETTINGS". Edit them on GitHub, commit, and run the workflow again.</p>
-  <p class="muted" style="margin-top:24px">Data: NHL public stats API (api.nhle.com, api-web.nhle.com). Personal use only.</p>`;
+  const sec = (title, body, open) => `<details ${open ? "open" : ""}><summary>${title}</summary><div class="gb">${body}</div></details>`;
+  document.getElementById("v-guide").innerHTML = `<h1>Guide</h1>
+    <p class="intro">How this app works. It rebuilds itself from NHL stats every morning around 5 AM.</p>
+    <div class="guide">
+    ${sec("Your league's scoring", `${pts(C.skaterScoring)}<div style="height:8px"></div>${pts(C.goalieScoring)}
+      <p>Hits and blocks matter a lot in your league. One goal is worth the same as ${f0(s.G / s.HIT)} hits, ${f1(s.G / s.BLK)} blocks or ${f0(s.G / s.SOG)} shots. A defenceman who hits and blocks a lot can outscore a 40-point winger.</p>
+      <p>For goalies, one goal against cancels about ${f1(0.85 / 0.2)} saves, so a goalie who faces lots of shots still scores in a loss.</p>`, true)}
+    ${sec("The pages", `<dl>
+      <dt>This week</dt><dd>Your weekly briefing: which teams play the most, the best pickups, goalie starts, who's hot or cold, and who's getting lucky. On Sundays it switches to next week.</dd>
+      <dt>Rankings</dt><dd>Every player ranked by your scoring. Hidden value shows players your scoring rates very differently from plain NHL points, which is your edge over league-mates.</dd>
+      <dt>Compare</dt><dd>Up to four players side by side. The best number in each row is highlighted.</dd>
+      <dt>Trade</dt><dd>Line up a trade. The puck slides toward whoever comes out ahead.</dd>
+      <dt>Player cards</dt><dd>Tap any player, anywhere, to see his card and send him to Compare or Trade.</dd></dl>`)}
+    ${sec("What the numbers mean", `<dl>
+      <dt>Points (FP)</dt><dd>Fantasy points with your league's scoring.</dd>
+      <dt>Projected per game</dt><dd>What a player should score per game for the rest of the season. See "How projections work".</dd>
+      <dt>Points left this season</dt><dd>Projected per game times the games left on his team's schedule. It assumes he plays every game.</dd>
+      <dt>Value over a free agent</dt><dd>How many more points he'll score than the best player you could pick up for free at his position. With ${C.leagueTeams} teams starting ${slots}, that's the first player outside the starters. This is the fairest way to compare positions and judge trades. In trades, anyone below free-agent level counts as zero.</dd>
+      <dt>The small bar</dt><dd>Blue is points from goals and assists. Gold is points from shots, hits and blocks. Gold is steady week to week; blue is streaky.</dd>
+      <dt>Shooting luck</dt><dd>Goals divided by shots, compared with his usual rate (last season with 60+ shots, otherwise the league average for his position). It appears once he has 30 shots.</dd>
+      <dt>Share of starts</dt><dd>How often a goalie starts his team's games. Expected starts are team games times that share.</dd>
+      <dt>Your playoff weeks</dt><dd>${W.ps ? `${fd(W.ps)} to ${fd(W.pe)}` : "Not set"}. By default the last three weeks of the NHL season. Change it in the script's settings to match your league.</dd></dl>`)}
+    ${sec("How projections work", `<p>Early-season numbers are noisy, so each projection blends three things:</p>
+      <div class="formula"><b>This season</b>, weighted by games played<br><b>Last season</b>, counted as ${C.priorGames} games (rookies get a cautious baseline)<br><b>The last ${C.recentDays} days</b>, which nudge the result by ${Math.round(C.recentWeight * 100)}%</div>
+      <p>As the season goes on, this season's numbers take over. Goalies work the same way per start (last season counts as ${C.goaliePriorStarts} starts), then get multiplied by their share of starts.</p>`)}
+    ${sec("What it can't see yet", `<ul>
+      <li>Injuries, line changes and confirmed starting goalies. Check Yahoo or Daily Faceoff before you set your lineup.</li>
+      <li>Yahoo positions. It uses NHL positions, and some players qualify at two spots on Yahoo.</li>
+      <li>Your league's rosters. Pickups assume players ranked outside the top ${C.leagueTeams * C.rosteredPerTeam} are available.</li>
+      ${C.hasLast ? "" : "<li>Last season's stats didn't load on today's update, so projections use this season only.</li>"}
+      ${C.hasRecent ? "" : "<li>Recent stats didn't load on today's update, so the Form lists are empty.</li>"}
+      ${C.hasSchedule ? "" : "<li>Schedules didn't load on today's update, so weekly numbers are estimates.</li>"}</ul>`)}
+    ${sec("Settings", `<p>League size, roster spots, scoring and playoff dates are at the top of the script, under "YOUR LEAGUE SETTINGS". Ask Claude to change them, or edit the file on GitHub.</p>
+      <p style="color:var(--muted);font-size:13px">Data from the NHL's public stats. For personal use.</p>`)}
+    </div>`;
 }
 
-// ---------- boot ----------
-renderPulse();
-renderCompare();
-renderTrade();
-renderGuide();
-const saved = store.get("tab", "pulse");
-if (TABS.includes(saved)) showTab(saved);
+// ---------- start ----------
+renderWeek(); renderRank(); renderCompare(); renderTrade(); renderGuide();
+const saved = store.get("view", "week");
+go(VIEWS.includes(saved) ? saved : "week");
 </script>
 </body>
 </html>
