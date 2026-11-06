@@ -5,13 +5,14 @@ name: Update FP Rankings
 
 on:
   schedule:
-    - cron: "17 10 * * *"   # every day at 10:17 UTC = ~5:17 AM Toronto (6:17 AM in summer)
+    - cron: "0 10 * * *"    # every day at 10:00 UTC = 5:00 AM Toronto (6:00 AM after clocks spring forward)
   workflow_dispatch:        # adds a "Run workflow" button so you can refresh any time
   push:                     # rebuild automatically whenever the app's code changes
     branches: [main]
     paths:
       - "fantasy_fp_rankings.py"
       - "my_league.json"
+      - "icons/**"
       - ".github/workflows/update-rankings.yml"
 
 permissions:
@@ -39,6 +40,7 @@ jobs:
         run: |
           python fantasy_fp_rankings.py --no-open --out site
           cp site/fp_rankings.html site/index.html
+          cp icons/* site/
 
       - name: Prepare Pages
         uses: actions/configure-pages@v5

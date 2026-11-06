@@ -646,6 +646,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="FP Hockey">
 <title>FP Hockey</title>
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100,400;100,500;100,600;100,700&display=swap">
@@ -2105,6 +2108,34 @@ def apply_league_file(league, skaters, goalies):
     return {"roster": roster, "ir": ir, "version": version}
 
 
+def print_briefing(skaters, goalies, pulse, week, my_team):
+    """Plain-text weekly summary in the build log (read by the Monday check-in)."""
+    by_id = {p["id"]: p for p in skaters + goalies}
+    nxt = week["focus"] == "next"
+    gk, fk = ("nxt", "nxtFp") if nxt else ("wk", "wkFp")
+    lines = ["", "===== WEEKLY BRIEFING =====", f"Week of {week['nmon'] if nxt else week['mon']}"]
+    games = {}
+    for p in skaters:
+        if p.get(gk) is not None:
+            games[p["team"]] = p[gk]
+    if games:
+        top = max(games.values())
+        busy = sorted(t for t, n in games.items() if n == top)
+        lines.append(f"Most games {'next week' if nxt else 'left this week'} ({top}): {', '.join(busy)}")
+    def names(ids, fmt, n=3):
+        return "; ".join(fmt(by_id[i]) for i in ids[:n] if i in by_id) or "none"
+    lines.append("Top pickups: " + names(pulse["stream"], lambda p: f"{p['name']} ({p['team']}, {p[fk]:.1f} pts, {p[gk]} gm)"))
+    lines.append("Goalie starts: " + names(pulse["goalies"], lambda g: f"{g['name']} ({g['team']}, {g[fk]:.1f} pts)"))
+    lines.append("Heating up: " + names(pulse["hot"], lambda p: f"{p['name']} ({p['recFpg']:.2f}/gm lately)"))
+    lines.append("Sell high: " + names(pulse["sell"], lambda p: f"{p['name']} ({p['sh']:.0f}% shooting, usually {p['shBase']:.0f}%)", 2))
+    mine = [by_id[i] for i in my_team.get("roster", []) if i in by_id and i not in my_team.get("ir", [])]
+    if mine:
+        few = [p["name"] for p in mine if (p.get(gk) or 0) <= 2 and p["pos"] != "G"]
+        lines.append(f"My team: {len(mine)} active; light schedule: {', '.join(few[:5]) or 'none'}")
+    lines.append("===== END BRIEFING =====")
+    log("\n".join(lines))
+
+
 def build(raw, season_id, min_gp, out_dir, today=None, open_browser=True, league=None):
     today = today or local_now().date()
     teams, week = analyze_schedule(raw.get("schedules", {}), today)
@@ -2152,6 +2183,7 @@ def build(raw, season_id, min_gp, out_dir, today=None, open_browser=True, league
     for g in sorted([g for g in goalies if g["q"]], key=lambda x: x["projRank"])[:5]:
         log(f"{g['projRank']:>3}  {g['name'][:23]:<24}{g['team'][:5]:<6}{int(g['gs']):>4} GS"
             f"  {g['proj']:.2f}/start  {g['share']*100:.0f}% starts")
+    print_briefing(skaters, goalies, pulse, week, my_team)
     log(f"\nSaved:\n  {os.path.abspath(html_path)}\n  {os.path.abspath(os.path.join(out_dir, 'skaters.csv'))}"
         f"\n  {os.path.abspath(os.path.join(out_dir, 'goalies.csv'))}")
     if open_browser:
