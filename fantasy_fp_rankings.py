@@ -939,6 +939,18 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .idea .dt td.up{color:var(--blue);font-weight:700}
   .idea .dt td.down{color:var(--red)}
   .idea .actions .btn{flex:none}
+  .ctrades{display:grid;gap:8px}
+  .ctrade{display:flex;align-items:center;gap:10px;background:var(--surface);border-radius:14px;padding:10px 12px}
+  .ct-body{flex:1;min-width:0;font-size:14px;display:grid;gap:3px}
+  .ct-l{display:inline-block;width:38px;font-size:12px;color:var(--muted)}
+  .ctrade .lnk{background:none;border:0;padding:0;font-weight:600;text-decoration:underline;text-decoration-color:var(--faint);text-underline-offset:3px}
+  .sh-pair{display:grid;gap:3px}
+  .sh-bar.thin{height:5px} .sh-bar.thin i{background:var(--line)}
+  .newtag{font:700 10.5px/1 var(--body);background:var(--blue);color:#fff;border-radius:4px;padding:2px 5px;vertical-align:2px;margin-left:4px}
+  .fixed{display:inline-block;font-size:11px;font-weight:700;color:var(--blue);margin-right:6px}
+  .fixed.lost{color:var(--red)}
+  .was{color:var(--muted)}
+  .note .lnk{background:none;border:0;padding:0;font-weight:700;text-decoration:underline;text-underline-offset:3px}
   [hidden]{display:none !important}
 
   @media (min-width:900px){
@@ -1100,7 +1112,7 @@ function ideaHTML(p) {
       <tr><td>Points left this season</td><td>${f0(g.rosFp)}</td><td class="${better(r.rosFp, g.rosFp)}">${f0(r.rosFp)}</td></tr>
     </tbody></table>
     <p class="why">${looks}${whyTxt}${x.tier === "stretch" ? " His season looks a bit better, so you may need to add a small piece." : ""}</p>
-    <div class="actions"><button class="btn primary" data-act="idea" data-give="${g.id}" data-get="${r.id}">Open in Trade</button>${ideas.length > 1 ? `<button class="btn" data-act="idea-next" data-id="${p.id}">Another idea (${ideaIdx % ideas.length + 1} of ${ideas.length})</button>` : ""}</div>
+    <div class="actions"><button class="btn primary" data-act="idea" data-give="${g.id}" data-get="${r.id}">Open in Trade</button><button class="btn" data-act="idea-concept" data-give="${g.id}" data-get="${r.id}">Try it</button>${ideas.length > 1 ? `<button class="btn" data-act="idea-next" data-id="${p.id}">Another idea (${ideaIdx % ideas.length + 1} of ${ideas.length})</button>` : ""}</div>
   </div>`;
 }
 
@@ -1129,6 +1141,7 @@ sheet.addEventListener("click", e => {
   if (b.dataset.act === "compare") { addCompare(id); closeSheet(); }
   if (b.dataset.act === "give" || b.dataset.act === "get") { addTrade(b.dataset.act, id); closeSheet(); }
   if (b.dataset.act === "idea") { trade = { give: [+b.dataset.give], get: [+b.dataset.get] }; saveTrade(); renderTrade(); closeSheet(); go("trade"); return; }
+  if (b.dataset.act === "idea-concept") { closeSheet(); addConcept([+b.dataset.give], [+b.dataset.get]); return; }
   if (b.dataset.act === "idea-next") { ideaIdx++; const y = sheet.scrollTop; sheet.innerHTML = sheetHTML(P.get(id)); sheet.scrollTop = y; return; }
   if (b.dataset.act === "team-add") { addToTeam(id); closeSheet(); }
   if (b.dataset.act === "team-rm") { removeFromTeam(id); closeSheet(); }
@@ -1523,7 +1536,7 @@ function renderTrade() {
         ${tr("Points next week", G.nxtFp, R.nxtFp, f1)}
         ${D.week.ps ? tr("Your playoff weeks", G.poFp, R.poFp, f0) : ""}
         </tbody></table></details>
-      <div class="actions"><button class="btn primary" id="tCopy">Copy for league chat</button><button class="btn" id="tSwap">Swap sides</button><button class="btn ghost" id="tClear">Clear</button></div>
+      <div class="actions"><button class="btn primary" id="tConcept">Try in My team</button><button class="btn" id="tCopy">Copy for league chat</button><button class="btn" id="tSwap">Swap sides</button><button class="btn ghost" id="tClear">Clear</button></div>
       <textarea id="tSum" hidden>${esc(summary)}</textarea></div>`;
     lastPuck = x;
   }
@@ -1534,6 +1547,7 @@ function renderTrade() {
   el.querySelectorAll("[data-trm]").forEach(b => b.onclick = () => {
     const [s, id] = b.dataset.trm.split(":"); trade[s] = trade[s].filter(x => x !== +id); saveTrade(); renderTrade();
   });
+  const tc = document.getElementById("tConcept"); if (tc) tc.onclick = () => addConcept(trade.give, trade.get);
   const c = document.getElementById("tCopy");
   if (c) c.onclick = async () => { try { await navigator.clipboard.writeText(document.getElementById("tSum").value); toast("Copied for league chat"); } catch (e) { toast("Copying isn't allowed in this browser"); } };
   const sw = document.getElementById("tSwap"); if (sw) sw.onclick = () => { trade = { give: trade.get, get: trade.give }; saveTrade(); renderTrade(); };
@@ -1588,8 +1602,8 @@ function toggleElig(id, pos) {
 const SLOTS = [];
 Object.entries(C.slots).forEach(([k, v]) => { for (let i = 0; i < v; i++) SLOTS.push(k); });
 const fits = (p, s) => s === "BN" ? true : s === "Util" ? !isG(p) : eligOf(p).includes(s);
-function autoLineup() {
-  const active = team.filter(id => !irSet.has(id)).map(id => P.get(id)).filter(Boolean).sort((a, b) => projTG(b) - projTG(a));
+function autoLineup(ids) {
+  const active = (ids || team.filter(id => !irSet.has(id))).map(id => P.get(id)).filter(Boolean).sort((a, b) => projTG(b) - projTG(a));
   const slots = SLOTS.map(s => ({ s, p: null }));
   const bench = [];
   for (const p of active) {
@@ -1679,17 +1693,19 @@ function shapeHTML(L) {
   <p class="hint" style="margin-top:10px">Bars show your starters' projected points per game. The tick marks a typical starter in a ${C.leagueTeams}-team league.</p></div>`;
 }
 
-function prosCons(L) {
+function prosCons(L, rosterIds) {
   const pros = [], cons = [];
+  const P_ = (k, t) => pros.push({ k, t }), C_ = (k, t) => cons.push({ k, t });
   const starters = L.slots.filter(x => x.p).map(x => x.p);
   const sk = starters.filter(p => !isG(p));
   const nameL = p => `<button class="lnk" data-pid="${p.id}">${esc(p.name)}</button>`;
+  const names = ps => ps.length === 1 ? nameL(ps[0]) : ps.slice(0, -1).map(nameL).join(", ") + " and " + nameL(ps[ps.length - 1]);
   const posName = { C: "centres", LW: "left wings", RW: "right wings", D: "defence", Util: "Util spot", G: "goalies" };
   Object.keys(C.slots).forEach(gp => {
     const ps = L.slots.filter(x => x.s === gp);
     const empty = ps.filter(x => !x.p).length;
     if (empty) {
-      cons.push(empty === ps.length
+      C_("empty:" + gp, empty === ps.length
         ? `Your ${gp} spot${ps.length > 1 ? "s are" : " is"} empty. Add a ${gp === "Util" ? "skater" : gp} so you stop losing points every game.`
         : `${empty} of your ${ps.length} ${gp} spots ${empty > 1 ? "are" : "is"} empty. Add a ${gp} so you stop losing points every game.`);
       return;
@@ -1697,44 +1713,45 @@ function prosCons(L) {
     const mine = avg(ps.map(x => projTG(x.p))), lg = LG[gp];
     if (!lg) return;
     const r = mine / lg;
-    if (r >= 1.08) pros.push(`Your ${posName[gp]} ${gp === "Util" ? "is" : "are"} a strength: ${f2(mine)} projected per game, against ${f2(lg)} for a typical starter.`);
-    if (r <= 0.92) cons.push(`Your ${posName[gp]} ${gp === "Util" ? "is" : "are"} below a typical starter: ${f2(mine)} per game against ${f2(lg)}.`);
+    if (r >= 1.08) P_("strong:" + gp, `Your ${posName[gp]} ${gp === "Util" ? "is" : "are"} a strength: ${f2(mine)} projected per game, against ${f2(lg)} for a typical starter.`);
+    if (r <= 0.92) C_("weak:" + gp, `Your ${posName[gp]} ${gp === "Util" ? "is" : "are"} below a typical starter: ${f2(mine)} per game against ${f2(lg)}.`);
   });
-  const names = ps => ps.length === 1 ? nameL(ps[0]) : ps.slice(0, -1).map(nameL).join(", ") + " and " + nameL(ps[ps.length - 1]);
   const weakS = starters.filter(p => (p.vor || 0) < 0);
-  if (weakS.length) cons.push(`${names(weakS)} ${weakS.length > 1 ? "are" : "is"} starting, but a free agent at the same position would score about as much. Check Moves for upgrades.`);
+  if (weakS.length) C_("belowFA", `${names(weakS)} ${weakS.length > 1 ? "are" : "is"} starting, but a free agent at the same position would score about as much. Check Moves for upgrades.`);
   starters.filter(isG).forEach(g => {
-    if (g.share >= 0.75) pros.push(`${nameL(g)} starts ${pct(g.share * 100)} of his team's games. That steady workload is worth a lot in your scoring.`);
-    else if (g.share < 0.55) cons.push(`${nameL(g)} only starts ${pct(g.share * 100)} of his team's games. Goalie starts are your biggest weekly lever.`);
+    if (g.share >= 0.75) P_("gshare:" + g.id, `${nameL(g)} starts ${pct(g.share * 100)} of his team's games. That steady workload is worth a lot in your scoring.`);
+    else if (g.share < 0.55) C_("gshare:" + g.id, `${nameL(g)} only starts ${pct(g.share * 100)} of his team's games. Goalie starts are your biggest weekly lever.`);
   });
   if (sk.length >= 4) {
     const tot = sk.reduce((s, p) => s + p.proj, 0) || 1;
     const peri = sk.reduce((s, p) => s + p.peri * p.proj, 0) / tot;
-    if (peri >= 38) pros.push(`${pct(peri)} of your skaters' points come from shots, hits and blocks, so your weekly floor is steady.`);
-    else if (peri <= 25) cons.push(`Only ${pct(peri)} of your skaters' points come from shots, hits and blocks. Your weeks will swing with goals. A hitting, shot-blocking defenceman would steady things.`);
+    if (peri >= 38) P_("peri", `${pct(peri)} of your skaters' points come from shots, hits and blocks, so your weekly floor is steady.`);
+    else if (peri <= 25) C_("peri", `Only ${pct(peri)} of your skaters' points come from shots, hits and blocks. Your weeks will swing with goals. A hitting, shot-blocking defenceman would steady things.`);
   }
-  const ros = team.map(id => P.get(id)).filter(Boolean);
+  const ros = (rosterIds || team).map(id => P.get(id)).filter(Boolean);
   const sell = ros.filter(p => !isG(p) && !nz(p.shDiff) && p.shDiff >= 5);
-  if (sell.length) cons.push(`${names(sell)} ${sell.length > 1 ? "are" : "is"} scoring on far more of ${sell.length > 1 ? "their" : "his"} shots than usual. Goals should slow down, so ${sell.length > 1 ? "their" : "his"} trade value may be at its peak.`);
+  if (sell.length) C_("sell", `${names(sell)} ${sell.length > 1 ? "are" : "is"} scoring on far more of ${sell.length > 1 ? "their" : "his"} shots than usual. Goals should slow down, so ${sell.length > 1 ? "their" : "his"} trade value may be at its peak.`);
   const buy = ros.filter(p => !isG(p) && !nz(p.shDiff) && p.shDiff <= -4);
-  if (buy.length) pros.push(`${names(buy)} ${buy.length > 1 ? "are" : "is"} shooting below ${buy.length > 1 ? "their" : "his"} usual rate. Expect more goals soon.`);
+  if (buy.length) P_("buy", `${names(buy)} ${buy.length > 1 ? "are" : "is"} shooting below ${buy.length > 1 ? "their" : "his"} usual rate. Expect more goals soon.`);
   const hotP = ros.filter(p => !isG(p) && !nz(p.recFpg) && p.recGp >= 3 && p.recFpg - p.fpg >= 1.5);
-  if (hotP.length) pros.push(`${names(hotP)} ${hotP.length > 1 ? "are" : "is"} hot, scoring well above ${hotP.length > 1 ? "their" : "his"} season pace over the last ${C.recentDays} days.`);
+  if (hotP.length) P_("hot", `${names(hotP)} ${hotP.length > 1 ? "are" : "is"} hot, scoring well above ${hotP.length > 1 ? "their" : "his"} season pace over the last ${C.recentDays} days.`);
   const coldP = ros.filter(p => !isG(p) && !nz(p.recFpg) && p.recGp >= 3 && p.recFpg - p.fpg <= -1.5);
-  if (coldP.length) cons.push(`${names(coldP)} ${coldP.length > 1 ? "have" : "has"} cooled off over the last ${C.recentDays} days. Worth watching, not panicking over.`);
+  if (coldP.length) C_("cold", `${names(coldP)} ${coldP.length > 1 ? "have" : "has"} cooled off over the last ${C.recentDays} days. Worth watching, not panicking over.`);
   const gk = gKey();
   const light = starters.filter(p => !nz(p[gk]) && p[gk] <= 1);
   const daysLeft = Math.round((dt(D.week.sun) - dt(D.week.today)) / 864e5) + 1;
-  if (light.length >= 3 && (nxtFocus() || daysLeft >= 4)) cons.push(`${plural(light.length, "starter")} ${light.length === 1 ? "has" : "have"} one game or fewer ${nxtFocus() ? "next week" : "left this week"}. Check the Moves tab for streamers.`);
+  if (light.length >= 3 && (nxtFocus() || daysLeft >= 4)) C_("light", `${plural(light.length, "starter")} ${light.length === 1 ? "has" : "have"} one game or fewer ${nxtFocus() ? "next week" : "left this week"}. Check the Moves tab for streamers.`);
   if (D.week.ps) {
     const all = Object.values(D.teams).map(t => t.po).filter(v => !nz(v));
     const lgPo = avg(all), myPo = avg(starters.map(p => p.po).filter(v => !nz(v)));
-    if (all.length && myPo >= lgPo + 0.6) pros.push(`Good playoff schedule: your starters average ${f1(myPo)} games in your playoff weeks, against ${f1(lgPo)} for the league.`);
-    if (all.length && myPo <= lgPo - 0.6) cons.push(`Light playoff schedule: your starters average ${f1(myPo)} games in your playoff weeks, against ${f1(lgPo)} for the league.`);
+    if (all.length && myPo >= lgPo + 0.6) P_("po", `Good playoff schedule: your starters average ${f1(myPo)} games in your playoff weeks, against ${f1(lgPo)} for the league.`);
+    if (all.length && myPo <= lgPo - 0.6) C_("po", `Light playoff schedule: your starters average ${f1(myPo)} games in your playoff weeks, against ${f1(lgPo)} for the league.`);
   }
-  if (L.ir.length > (C.irSlots || 3)) cons.push(`You have ${L.ir.length} players on IR but only ${C.irSlots} IR spots.`);
-  const activeN = team.length - L.ir.length;
-  if (activeN > ROSTER_MAX) cons.push(`You have ${activeN} active players, ${activeN - ROSTER_MAX} more than your ${ROSTER_MAX} roster spots.`);
+  if (!rosterIds) {
+    if (L.ir.length > (C.irSlots || 3)) C_("ir", `You have ${L.ir.length} players on IR but only ${C.irSlots} IR spots.`);
+    const activeN = team.length - L.ir.length;
+    if (activeN > ROSTER_MAX) C_("roster", `You have ${activeN} active players, ${activeN - ROSTER_MAX} more than your ${ROSTER_MAX} roster spots.`);
+  }
   return { pros, cons };
 }
 
@@ -1791,6 +1808,106 @@ function moveCard(m) {
   </div>`;
 }
 
+// ---------- concept team (what-if trades) ----------
+let concept = store.get("concept", []).filter(t => t && Array.isArray(t.give) && Array.isArray(t.get));
+const saveConcept = () => store.set("concept", concept);
+let confirmApply = false;
+function conceptIds() {
+  let active = team.filter(id => !irSet.has(id)), ir = team.filter(id => irSet.has(id));
+  const incoming = new Set(), outgoing = new Set();
+  for (const t of concept) {
+    t.give.forEach(id => { if (active.includes(id) || ir.includes(id)) outgoing.add(id); });
+    active = active.filter(id => !t.give.includes(id)); ir = ir.filter(id => !t.give.includes(id));
+    t.get.forEach(id => {
+      if (!active.includes(id) && P.has(id)) { active.push(id); outgoing.delete(id); if (!team.includes(id)) incoming.add(id); }
+    });
+  }
+  return { active: active.filter(id => P.has(id)), ir, incoming, outgoing };
+}
+function addConcept(give, get) {
+  if (!give.length && !get.length) return;
+  const notMine = give.filter(id => !onTeam(id));
+  concept.push({ give: give.slice(), get: get.slice() }); saveConcept(); confirmApply = false;
+  teamState.tab = "concept"; renderTeam(); go("team");
+  toast(notMine.length ? `Added. ${P.get(notMine[0]).name} isn't on your team, so he's skipped` : "Added to your concept team");
+}
+function teamMetrics(L) {
+  const st = L.slots.filter(x => x.p).map(x => x.p);
+  return {
+    week: st.reduce((s, p) => s + projTG(p), 0) * GPW,
+    focus: st.reduce((s, p) => s + (p[wkKey()] || 0), 0),
+    vor: st.reduce((s, p) => s + tval(p), 0),
+    po: st.reduce((s, p) => s + (p.poFp || 0), 0),
+  };
+}
+const groupAvg = (L, gp) => { const ps = L.slots.filter(x => x.s === gp); return ps.some(x => x.p) ? avg(ps.map(x => x.p ? projTG(x.p) : 0)) : 0; };
+function conceptHTML(Lcur) {
+  if (!concept.length) return `<div class="list" style="margin-top:14px"><div class="empty">Try trades before you make them. Build one on the Trade page and tap <b>Try in My team</b>, or tap <b>Try it</b> on a player card's trade idea. You can stack several trades and see how your team changes.</div></div>
+    <div class="actions"><button class="btn primary" data-go="trade">Go to Trade</button></div>`;
+  const K = conceptIds();
+  const Lc = { ...autoLineup(K.active), ir: K.ir.map(id => P.get(id)).filter(Boolean) };
+  const m0 = teamMetrics(Lcur), m1 = teamMetrics(Lc);
+  const nm = ids => ids.map(id => P.get(id)).filter(Boolean).map(p => `<button class="lnk" data-pid="${p.id}">${esc(p.name)}</button>`).join(", ") || "nobody";
+  const trades = concept.map((t, i) => `<div class="ctrade"><div class="ct-body"><div><span class="ct-l">Give</span>${nm(t.give)}</div><div><span class="ct-l">Get</span>${nm(t.get)}</div></div>
+    <button class="rm" data-crm="${i}" aria-label="Remove this trade">✕</button></div>`).join("");
+  const row = (label, a, b, f) => `<tr><td>${label}</td><td>${f(a)}</td><td>${f(b)}</td><td class="${b - a > 0.5 ? "up" : b - a < -0.5 ? "down" : ""}">${sgn(b - a, f)}</td></tr>`;
+  const shape = Object.keys(C.slots).map(gp => {
+    const a = groupAvg(Lcur, gp), b = groupAvg(Lc, gp), lg = LG[gp] || 0;
+    const max = Math.max(LG[gp + "Max"] || 1, a, b, lg * 1.4);
+    const r = lg ? b / lg : 1, cls = !b ? "weak" : r >= 1.08 ? "strong" : r <= 0.92 ? "weak" : "";
+    const d = b - a;
+    return `<div class="sh-row"><span class="sh-l">${gp}</span>
+      <div class="sh-pair"><div class="sh-bar thin"><i style="width:${Math.min(100, a / max * 100)}%"></i></div>
+      <div class="sh-bar"><i class="${cls}" style="width:${Math.min(100, b / max * 100)}%"></i><em style="left:${Math.min(100, lg / max * 100)}%"></em></div></div>
+      <span class="sh-v">${f2(b)}</span><span class="sh-tag ${d > 0.04 ? "strong" : d < -0.04 ? "weak" : ""}">${Math.abs(d) < 0.005 ? "Same" : sgn(d, f2)}</span></div>`;
+  }).join("");
+  const pc0 = prosCons(Lcur), pc1 = prosCons(Lc, [...K.active, ...K.ir]);
+  const has = (list, k) => list.some(x => x.k === k);
+  const better = [...pc1.pros.filter(x => !has(pc0.pros, x.k)).map(x => x.t),
+    ...pc0.cons.filter(x => !has(pc1.cons, x.k)).map(x => `<span class="fixed">Fixed</span><span class="was">${x.t}</span>`)];
+  const worse = [...pc1.cons.filter(x => !has(pc0.cons, x.k)).map(x => x.t),
+    ...pc0.pros.filter(x => !has(pc1.pros, x.k)).map(x => `<span class="fixed lost">Lost</span><span class="was">${x.t}</span>`)];
+  const n = K.active.length, over = n - ROSTER_MAX;
+  const drops = over > 0 ? Lc.bench.slice().sort((a, b) => tval(a) - tval(b) || projTG(a) - projTG(b)).slice(0, over) : [];
+  const leaving = [...K.outgoing].map(id => P.get(id)).filter(Boolean);
+  const verdictCls = m1.vor - m0.vor > 5 ? "win" : m1.vor - m0.vor < -5 ? "lose" : "";
+  return `
+    <h2 class="sub2">Trades in this concept <span class="cnt">${concept.length}</span></h2>
+    <div class="ctrades">${trades}</div>
+    <div class="verdict" style="margin-top:14px">
+      <div class="vh ${verdictCls}" style="margin-top:0">${m1.vor - m0.vor > 5 ? `Better by ${f0(m1.vor - m0.vor)} points` : m1.vor - m0.vor < -5 ? `Worse by ${f0(m0.vor - m1.vor)} points` : "About the same"}</div>
+      <p class="vs">Value your starting lineup adds over free agents for the rest of the season, now versus with these trades.</p>
+      <table class="dt"><thead><tr><th></th><th>Now</th><th>Concept</th><th>Change</th></tr></thead><tbody>
+        ${row("Points in a typical week", m0.week, m1.week, f0)}
+        ${row(nxtFocus() ? "Projected next week" : "Left this week", m0.focus, m1.focus, f0)}
+        ${row("Value over free agents", m0.vor, m1.vor, f0)}
+        ${D.week.ps ? row("Your playoff weeks", m0.po, m1.po, f0) : ""}
+      </tbody></table>
+    </div>
+    <h2 class="sub2">Team shape</h2>
+    <div class="shape">${shape}<p class="hint" style="margin-top:10px">Thin grey bar: your team now. Thick bar: the concept team. The tick marks a typical starter.</p></div>
+    <h2 class="sub2">Gets better</h2>${better.length ? `<ul class="pc pro">${better.map(t => `<li>${t}</li>`).join("")}</ul>` : `<p class="hint">Nothing new on the plus side.</p>`}
+    <h2 class="sub2">Gets worse</h2>${worse.length ? `<ul class="pc con">${worse.map(t => `<li>${t}</li>`).join("")}</ul>` : `<p class="hint">Nothing gets worse. Nice.</p>`}
+    ${over > 0 ? `<div class="note">You'd have ${n} active players, ${over} over your ${ROSTER_MAX} spots. The lowest-value cut${over > 1 ? "s" : ""}: ${drops.map(p => `<button class="lnk" data-pid="${p.id}">${esc(p.name)}</button>`).join(", ")}.</div>`
+      : over < 0 ? `<div class="note cool">You'd have ${plural(-over, "open roster spot")} to fill with free agents.</div>` : ""}
+    <h2 class="sub2">Concept lineup</h2>
+    <div class="list">${Lc.slots.map(x => x.p
+      ? `<div class="row slotrow" data-pid="${x.p.id}"><span class="slot s-${x.s}">${x.s}</span><span class="who"><b>${esc(x.p.name)}${K.incoming.has(x.p.id) ? ` <span class="newtag">New</span>` : ""}</b>${meta(x.p)}</span><span class="val"><b>${f2(projTG(x.p))}</b><small>per game</small></span></div>`
+      : `<div class="row slotrow empty-slot"><span class="slot s-${x.s}">${x.s}</span><span class="who"><b class="muted">Empty</b></span></div>`).join("")}</div>
+    ${Lc.bench.length ? `<h2 class="sub2">Bench</h2><div class="list">${Lc.bench.map(p => `<div class="row slotrow" data-pid="${p.id}"><span class="slot">BN</span><span class="who"><b>${esc(p.name)}${K.incoming.has(p.id) ? ` <span class="newtag">New</span>` : ""}</b>${meta(p)}</span><span class="val"><b>${f2(projTG(p))}</b></span></div>`).join("")}</div>` : ""}
+    ${leaving.length ? `<p class="hint" style="margin-top:12px">Leaving: ${leaving.map(p => esc(p.name)).join(", ")}.</p>` : ""}
+    <div class="actions" style="margin-top:18px"><button class="btn primary" data-capply>${confirmApply ? "Tap again to confirm" : "Make this my team"}</button><button class="btn ghost" data-cclear>Clear concept</button></div>
+    <p class="hint">"Make this my team" updates My team on this device. Make the trade in Yahoo too, and tell Claude so your league file matches.</p>`;
+}
+function applyConcept() {
+  const K = conceptIds();
+  team = [...K.active, ...K.ir]; irSet = new Set(K.ir);
+  manual = null; store.set("lineup", null);
+  concept = []; saveConcept(); saveTeam(); confirmApply = false;
+  teamState.tab = "lineup"; renderTeam(); renderWeek();
+  toast("My team updated");
+}
+
 function slotRow(label, p, key, L) {
   const mv = teamState.moving;
   const state = !mv || !L ? "" : key === mv ? "moving" : canSwap(L, mv, key) ? "target" : "dim";
@@ -1809,7 +1926,7 @@ function renderTeam() {
   if (!el) return;
   const L = lineup();
   if (teamState.moving && !keyPlayer(L, teamState.moving)) teamState.moving = null;
-  const tabs = seg("ttab", [["lineup", "Lineup"], ["report", "Report"], ["moves", "Moves"]], teamState.tab, true);
+  const tabs = seg("ttab", [["lineup", "Lineup"], ["report", "Report"], ["moves", "Moves"], ["concept", "Concept"]], teamState.tab, true);
   let body = "";
   if (!team.length) {
     body = `<div class="list" style="margin-top:14px"><div class="empty">Add the players on your Yahoo roster. They're saved on this device, and the app will set your best lineup, grade it, and suggest who to drop and add.<br><br>Tip: you can also tap any player in the app and choose <b>Add to My team</b>.</div></div>`;
@@ -1827,8 +1944,11 @@ function renderTeam() {
       <h2 class="sub2">Injured reserve <span class="cnt">${L.ir.length} of ${C.irSlots}</span></h2>
       ${L.ir.length ? `<div class="list">${L.ir.map(p => slotRow("IR", p)).join("")}</div>` : `<p class="hint">Tap a player and choose <b>Move to IR</b> when he's hurt.</p>`}
       <p class="hint" style="margin-top:14px">Tap a position ring to move a player, then tap where he should go. Only spots he can play light up. Tap a name to open his player card.</p>`;
+  } else if (teamState.tab === "concept") {
+    body = conceptHTML(L);
   } else if (teamState.tab === "report") {
-    const { pros, cons } = prosCons(L);
+    const { pros: pros0, cons: cons0 } = prosCons(L);
+    const pros = pros0.map(x => x.t), cons = cons0.map(x => x.t);
     body = `<h2 class="sub2">Team shape</h2>${shapeHTML(L)}
       <h2 class="sub2">Strengths</h2>${pros.length ? `<ul class="pc pro">${pros.map(t => `<li>${t}</li>`).join("")}</ul>` : `<p class="hint">Nothing stands out yet.</p>`}
       <h2 class="sub2">Weak spots</h2>${cons.length ? `<ul class="pc con">${cons.map(t => `<li>${t}</li>`).join("")}</ul>` : `<p class="hint">No weak spots found. Nice.</p>`}`;
@@ -1845,7 +1965,7 @@ function renderTeam() {
   el.innerHTML = `<h1>My team</h1>
     <p class="intro">${team.length ? `${plural(team.length - L.ir.length, "active player")} of ${ROSTER_MAX}${L.ir.length ? `, ${L.ir.length} on IR` : ""}.${fileTeam.version ? " Loaded from your league file. After a trade or pickup, add or remove players here, or ask Claude to update the file." : ""}` : "Build your roster to get a lineup, a report card and moves to make."}</p>
     ${team.length ? tabs : ""}
-    <div id="tPick" style="margin-top:14px"></div>
+    <div id="tPick" style="margin-top:14px" ${teamState.tab === "concept" ? "hidden" : ""}></div>
     ${body}`;
   picker(document.getElementById("tPick"), "Add a player to your roster", addToTeam);
 }
@@ -1856,6 +1976,10 @@ document.getElementById("v-team").addEventListener("click", e => {
   if (sw && teamState.moving) { e.stopPropagation(); doSwap(lineup(), teamState.moving, sw.dataset.swap); teamState.moving = null; renderTeam(); renderWeek(); return; }
   if (e.target.closest("[data-cancelmove]")) { teamState.moving = null; return renderTeam(); }
   if (e.target.closest("[data-autolineup]")) { manual = null; store.set("lineup", null); teamState.moving = null; toast("Best lineup set"); return renderTeam(); }
+  const crm = e.target.closest("[data-crm]");
+  if (crm) { concept.splice(+crm.dataset.crm, 1); saveConcept(); confirmApply = false; return renderTeam(); }
+  if (e.target.closest("[data-cclear]")) { concept = []; saveConcept(); confirmApply = false; toast("Concept cleared"); return renderTeam(); }
+  if (e.target.closest("[data-capply]")) { if (confirmApply) return applyConcept(); confirmApply = true; return renderTeam(); }
   const s = e.target.closest("[data-seg]");
   if (s) { if (s.dataset.seg === "ttab") teamState.tab = s.dataset.val; else teamState.moves = s.dataset.val; return renderTeam(); }
   const c2 = e.target.closest("[data-cmp2]");
@@ -1885,6 +2009,7 @@ function renderGuide() {
       <dt>Compare</dt><dd>Up to four players side by side. The best number in each row is highlighted.</dd>
       <dt>Trade</dt><dd>Line up a trade. The puck slides toward whoever comes out ahead.</dd>
       <dt>Player cards</dt><dd>Tap any player, anywhere, to see his card, send him to Compare or Trade, or add him to My team.</dd>
+      <dt>Concept team</dt><dd>A what-if version of your roster in My team. Send trades to it from the Trade page or a trade idea, stack as many as you like, and see your weekly points, value, position strength and lineup next to your team as it is now. "Make this my team" applies it.</dd>
       <dt>Trade ideas</dt><dd>Each player card suggests a one-for-one trade that should look fair to the other manager, judged by the season numbers Yahoo shows, while your projections say you come out ahead. On your players it suggests who to target; on other players it suggests who to offer. It can't see other rosters, so check who owns the player first.</dd></dl>`)}
     ${sec("What the numbers mean", `<dl>
       <dt>Points (FP)</dt><dd>Fantasy points with your league's scoring.</dd>
