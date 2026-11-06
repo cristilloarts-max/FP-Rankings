@@ -1,0 +1,54 @@
+# Rebuilds the FP Rankings page every morning and publishes it with GitHub Pages.
+# File location in your repo: .github/workflows/update-rankings.yml
+
+name: Update FP Rankings
+
+on:
+  schedule:
+    - cron: "17 10 * * *"   # every day at 10:17 UTC = ~5:17 AM Toronto (6:17 AM in summer)
+  workflow_dispatch:        # adds a "Run workflow" button so you can refresh any time
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build rankings
+        run: |
+          python fantasy_fp_rankings.py --no-open --out site
+          cp site/fp_rankings.html site/index.html
+
+      - name: Prepare Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
