@@ -639,8 +639,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#F2F6F9" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0C1626" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#E4EBF2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#050B16" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -655,21 +655,21 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&display=swap">
 <style>
   :root{
-    --ice:#F2F6F9; --surface:#FFFFFF; --ink:#0F1E33; --muted:#5D6D83; --faint:#93A1B4; --line:#DCE4EC;
-    --blue:#1F5FD1; --blue-soft:#E3ECFB; --red:#D7263D; --red-soft:#FBE6E9; --gold:#E0A100;
-    --pC:#1E6FD0; --pW:#11866A; --pD:#9A7000; --pG:#5B8A0E;
-    --heat0:#E9EEF3; --heat1:#D6E2F4; --heat2:#A9C3EE; --heat3:#5F8FE0; --heat4:#1F5FD1;
-    --shadow:0 18px 40px rgba(15,30,51,.18);
+    --ice:#E4EBF2; --surface:#FFFFFF; --ink:#06142A; --muted:#3E4E66; --faint:#6A7A92; --line:#C6D2DE;
+    --blue:#1650C2; --blue-soft:#DAE6FB; --red:#C4122F; --red-soft:#FADDE2; --gold:#D08F00;
+    --pC:#1559C0; --pW:#0B7559; --pD:#865F00; --pG:#4A7608;
+    --heat0:#DCE5EE; --heat1:#C3D5F0; --heat2:#8DB0EA; --heat3:#3F78DA; --heat4:#1650C2;
+    --shadow:0 18px 40px rgba(6,20,42,.22);
     --display:"Big Shoulders Display","Big Shoulders","Barlow Condensed","Arial Narrow",sans-serif;
     --body:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
   }
   @media (prefers-color-scheme: dark){
     :root{
-      --ice:#0C1626; --surface:#13213A; --ink:#E9F0F8; --muted:#97A6BC; --faint:#64748B; --line:#22324D;
-      --blue:#5B8EF0; --blue-soft:#1A2D52; --red:#F0525F; --red-soft:#3A1C27; --gold:#F2BE3A;
-      --pC:#5AA7F0; --pW:#4CC7A3; --pD:#E0B43A; --pG:#A8CF3F;
-      --heat0:#16243D; --heat1:#1B3159; --heat2:#25467F; --heat3:#3767BE; --heat4:#5B8EF0;
-      --shadow:0 18px 40px rgba(0,0,0,.5);
+      --ice:#050B16; --surface:#14243F; --ink:#F7FAFD; --muted:#BAC6D8; --faint:#8A9AB3; --line:#2E4266;
+      --blue:#7AA6FF; --blue-soft:#1C3460; --red:#FF6170; --red-soft:#45202D; --gold:#FFC940;
+      --pC:#6DB6FF; --pW:#5CE0B8; --pD:#FFC94A; --pG:#B9E34E;
+      --heat0:#1B2C4A; --heat1:#20396A; --heat2:#2C5398; --heat3:#2E58B0; --heat4:#4A7CF0;
+      --shadow:0 18px 40px rgba(0,0,0,.6);
     }
   }
   *{box-sizing:border-box}
@@ -719,9 +719,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     text-decoration-color:var(--faint);text-underline-offset:3px}
 
   /* segmented */
-  .seg{display:inline-flex;background:var(--heat0);border-radius:10px;padding:3px}
-  .seg button{border:0;background:none;padding:6px 12px;border-radius:8px;font-size:13px;font-weight:600;color:var(--muted)}
-  .seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(15,30,51,.15)}
+  .seg{display:inline-flex;background:var(--line);border-radius:10px;padding:3px}
+  .seg button{border:0;background:none;padding:6px 12px;border-radius:8px;font-size:13px;font-weight:600;color:var(--ink);opacity:.75}
+  .seg button[aria-pressed="true"]{opacity:1}
+  .seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 4px rgba(6,20,42,.25)}
   .seg.full{display:flex} .seg.full button{flex:1}
 
   /* schedule heat grid */
