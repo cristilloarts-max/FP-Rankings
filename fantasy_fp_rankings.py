@@ -384,6 +384,14 @@ def team_info(teams, team, fallback_played):
 # ===========================================================================
 # PLAYERS + PROJECTIONS
 # ===========================================================================
+def current_team(recent, season):
+    """Latest team: recent games first (catches trades), then the season row."""
+    for src in (recent, season):
+        if src and src.get("teamList"):
+            return src["teamList"][-1]
+    return ""
+
+
 def rank(items, key, out_field, reverse=True):
     for i, item in enumerate(sorted(items, key=lambda x: x[key], reverse=reverse), start=1):
         item[out_field] = i
@@ -406,7 +414,7 @@ def build_skaters(raw, teams, min_gp):
         if gp <= 0:
             continue
         s, pe = skater_fp(p)
-        team_now = (rec.get(pid) or p)["teamList"][-1] if (rec.get(pid) or p)["teamList"] else ""
+        team_now = current_team(rec.get(pid), p)
         out = {
             "id": pid, "name": p["name"], "team": team_now, "teams": "/".join(p["teamList"]), "pos": p["pos"],
             "gp": gp, "g": p["goals"], "a": p["assists"], "pts": p["points"], "ppp": p["ppPoints"],
@@ -505,7 +513,7 @@ def build_goalies(raw, teams, min_gp):
         if gp <= 0:
             continue
         fp = goalie_fp(g)
-        team_now = (rec.get(pid) or g)["teamList"][-1] if (rec.get(pid) or g)["teamList"] else ""
+        team_now = current_team(rec.get(pid), g)
         noWin = g["saves"] * GOALIE_SCORING["saves"] + g["goalsAgainst"] * GOALIE_SCORING["goalsAgainst"]
         out = {
             "id": pid, "name": g["name"], "team": team_now, "teams": "/".join(g["teamList"]), "pos": "G",
