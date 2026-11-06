@@ -919,6 +919,26 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .chip.pc-C[aria-pressed="true"]{background:var(--pC);border-color:var(--pC);color:#fff}
   .chip.pc-LW[aria-pressed="true"],.chip.pc-RW[aria-pressed="true"]{background:var(--pW);border-color:var(--pW);color:#fff}
   .chip.pc-D[aria-pressed="true"]{background:var(--pD);border-color:var(--pD);color:#fff}
+  button.slot{font:inherit;font-size:11px;font-weight:700;cursor:pointer;min-height:30px;width:44px}
+  .slotrow.target{background:var(--blue-soft);cursor:pointer}
+  .slotrow.target .slot{border-style:solid;box-shadow:0 0 0 3px color-mix(in srgb,var(--blue) 25%,transparent)}
+  .slotrow.moving{box-shadow:inset 3px 0 0 var(--blue);background:var(--heat0)}
+  .slotrow.moving .slot{background:var(--blue) !important;border-color:var(--blue);color:#fff}
+  .slotrow.dim{opacity:.38}
+  .movebar{position:sticky;top:8px;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:10px;
+    background:var(--ink);color:var(--ice);border-radius:14px;padding:10px 12px 10px 14px;margin:16px 0 0;font-size:14px;box-shadow:var(--shadow)}
+  .movebar .btn{padding:6px 12px;font-size:13px;color:var(--ink);background:var(--ice);border-color:var(--ice)}
+  .sbar{justify-content:space-between;align-items:center}
+  .sbar h2{font-size:20px;margin:0}
+  .btn.small{padding:6px 12px;font-size:13px}
+  .idea{background:var(--surface);border-radius:16px;padding:14px;margin-top:10px;border:1.5px solid var(--blue-soft)}
+  .ih{display:flex;justify-content:space-between;align-items:baseline}
+  .ih b{font:700 20px/1 var(--display)}
+  .ih span{font:800 22px/1 var(--display);color:var(--blue)}
+  .idea .dt td small{color:var(--faint);font-size:11px}
+  .idea .dt td.up{color:var(--blue);font-weight:700}
+  .idea .dt td.down{color:var(--red)}
+  .idea .actions .btn{flex:none}
   [hidden]{display:none !important}
 
   @media (min-width:900px){
@@ -1026,12 +1046,71 @@ function go(v) {
 document.querySelectorAll("nav.tabs button").forEach(b => b.onclick = () => go(b.dataset.v));
 document.addEventListener("click", e => { const g = e.target.closest("[data-go]"); if (g) go(g.dataset.go); });
 
+// ---------- trade ideas ----------
+// "Looks" = what the other manager sees on Yahoo (season points per game).
+// "Value" = what the projections say you gain over the rest of the season.
+const tval = p => Math.max(0, p.rosVor || 0);
+const isRostered = c => c.q && (isG(c) ? (c.projRank || 999) <= C.leagueTeams * ((C.slots.G || 2) + 1) : (c.projRank || 999) <= C.leagueTeams * C.rosteredPerTeam);
+function tradeIdeas(p) {
+  const mine = onTeam(p.id);
+  let pairs;
+  if (mine) {
+    pairs = (isG(p) ? GO : SK).filter(c => !onTeam(c.id) && isRostered(c) && (isG(p) || eligOf(c).some(x => eligOf(p).includes(x))))
+      .map(c => ({ give: p, get: c }));
+  } else {
+    pairs = team.filter(id => !irSet.has(id)).map(id => P.get(id)).filter(m => m && isG(m) === isG(p)).map(m => ({ give: m, get: p }));
+  }
+  pairs.forEach(x => {
+    x.gain = tval(x.get) - tval(x.give);
+    x.look = x.get.fpg / Math.max(0.01, x.give.fpg);
+    x.overlap = isG(x.get) || eligOf(x.get).some(y => eligOf(x.give).includes(y));
+  });
+  const ok = (lo, hi) => pairs.filter(x => x.gain >= 5 && x.get.rosFp > x.give.rosFp && x.look >= lo && x.look <= hi)
+    .sort((a, b) => (b.overlap - a.overlap) || (b.gain - a.gain));
+  const fair = ok(0.8, 1.05);
+  if (fair.length) return fair.slice(0, 3).map(x => ({ ...x, tier: "fair" }));
+  return ok(0.8, 1.2).slice(0, 2).map(x => ({ ...x, tier: "stretch" }));
+}
+let ideaIdx = 0;
+function ideaHTML(p) {
+  const ideas = tradeIdeas(p);
+  if (!ideas.length) return `<div class="idea"><div class="ih"><b>Trade idea</b></div>
+    <p class="why" style="margin-top:6px">${onTeam(p.id) ? `No one-for-one trade found that looks fair to the other manager and still helps you. ${esc(p.name)} may be worth more to you than to them.` : `None of your players lines up for a fair-looking one-for-one that helps you. He may cost more than he's worth.`}</p></div>`;
+  const x = ideas[ideaIdx % ideas.length];
+  const g = x.give, r = x.get;
+  const side = (q, lbl, cls) => `<button class="mside ${cls}" data-pid="${q.id}"><small>${lbl}</small><b>${esc(q.name)}</b>${meta(q)}</button>`;
+  const better = (a, b) => a > b ? "up" : a < b ? "down" : "";
+  const looks = r.fpg <= g.fpg ? `On Yahoo, ${esc(r.name)}'s season (${f2(r.fpg)} a game) looks no better than ${esc(g.name)}'s (${f2(g.fpg)}), so it reads as fair or even a win for them.`
+    : `On Yahoo, ${esc(r.name)}'s season (${f2(r.fpg)} a game) is close to ${esc(g.name)}'s (${f2(g.fpg)}), so it should read as a fair swap.`;
+  const why = [];
+  if (r.proj - r.fpg >= 0.25 && !isG(r)) why.push(`${esc(r.name)} should score more than he has so far`);
+  if (g.fpg - g.proj >= 0.25 && !isG(g)) why.push(`${esc(g.name)} has been scoring above his projection`);
+  if (!isG(r) && !nz(r.shDiff) && r.shDiff <= -4) why.push(`${esc(r.name)} is shooting below his usual rate`);
+  if (!isG(g) && !nz(g.shDiff) && g.shDiff >= 5) why.push(`${esc(g.name)} is riding a hot shooting streak`);
+  if ((r.ros || 0) - (g.ros || 0) >= 2) why.push(`${esc(r.name)}'s team has ${(r.ros || 0) - (g.ros || 0)} more games left`);
+  if (isG(r) && r.share - g.share >= 0.08) why.push(`${esc(r.name)} starts more often (${pct(r.share * 100)} vs ${pct(g.share * 100)})`);
+  if (!isG(r) && r.peri - g.peri >= 10) why.push(`more of ${esc(r.name)}'s points come from hits, blocks and shots, which hold steady`);
+  const whyTxt = why.length ? ` Your projections favour ${esc(r.name)} because ${why.slice(0, 2).join(" and ")}.` : ` Your projections say ${esc(r.name)} scores more the rest of the way.`;
+  return `<div class="idea">
+    <div class="ih"><b>Trade idea</b><span>+${f0(x.gain)} for you</span></div>
+    <div class="swap">${side(g, "You give", "out")}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>${side(r, "You get", "in")}</div>
+    <table class="dt"><thead><tr><th></th><th>${esc(g.name.split(" ").slice(-1)[0])}</th><th>${esc(r.name.split(" ").slice(-1)[0])}</th></tr></thead><tbody>
+      <tr><td>Season per game <small>(what Yahoo shows)</small></td><td>${f2(g.fpg)}</td><td>${f2(r.fpg)}</td></tr>
+      <tr><td>Projected per game</td><td>${f2(projTG(g))}</td><td class="${better(projTG(r), projTG(g))}">${f2(projTG(r))}</td></tr>
+      <tr><td>Points left this season</td><td>${f0(g.rosFp)}</td><td class="${better(r.rosFp, g.rosFp)}">${f0(r.rosFp)}</td></tr>
+    </tbody></table>
+    <p class="why">${looks}${whyTxt}${x.tier === "stretch" ? " His season looks a bit better, so you may need to add a small piece." : ""}</p>
+    <div class="actions"><button class="btn primary" data-act="idea" data-give="${g.id}" data-get="${r.id}">Open in Trade</button>${ideas.length > 1 ? `<button class="btn" data-act="idea-next" data-id="${p.id}">Another idea (${ideaIdx % ideas.length + 1} of ${ideas.length})</button>` : ""}</div>
+  </div>`;
+}
+
 // ---------- player sheet ----------
 const sheet = document.getElementById("sheet"), scrim = document.getElementById("scrim");
 let lastFocus = null;
 function openSheet(id) {
   const p = P.get(id); if (!p) return;
   lastFocus = document.activeElement;
+  ideaIdx = 0;
   sheet.innerHTML = sheetHTML(p);
   sheet.classList.add("open"); scrim.classList.add("open");
   sheet.scrollTop = 0;
@@ -1049,6 +1128,8 @@ sheet.addEventListener("click", e => {
   if (b.dataset.act === "close") return closeSheet();
   if (b.dataset.act === "compare") { addCompare(id); closeSheet(); }
   if (b.dataset.act === "give" || b.dataset.act === "get") { addTrade(b.dataset.act, id); closeSheet(); }
+  if (b.dataset.act === "idea") { trade = { give: [+b.dataset.give], get: [+b.dataset.get] }; saveTrade(); renderTrade(); closeSheet(); go("trade"); return; }
+  if (b.dataset.act === "idea-next") { ideaIdx++; const y = sheet.scrollTop; sheet.innerHTML = sheetHTML(P.get(id)); sheet.scrollTop = y; return; }
   if (b.dataset.act === "team-add") { addToTeam(id); closeSheet(); }
   if (b.dataset.act === "team-rm") { removeFromTeam(id); closeSheet(); }
   if (b.dataset.act === "ir") { toggleIR(id); closeSheet(); }
@@ -1097,6 +1178,7 @@ function sheetHTML(p) {
     <h2 id="sheetName">${esc(p.name)}</h2>
     <div class="meta" style="font-size:13px"><span class="tm">${esc(p.team)}</span>${posTags(p)}${rk ? `<span>${rk}</span>` : ""}</div>
     ${body}
+    ${team.length && p.q ? ideaHTML(p) : ""}
     ${!g ? `<div class="kv"><div style="display:block"><span>Yahoo positions</span>
       <div class="chips" style="margin-top:8px">${["C", "LW", "RW", "D"].map(x => `<button class="chip pc-${x}" data-act="elig" data-id="${p.id}" data-pos="${x}" aria-pressed="${eligOf(p).includes(x)}">${x}</button>`).join("")}</div>
       <span style="font-size:12px">${elig[p.id] ? "Changed on this device." : p.elig ? "From your league file." : "From his NHL position."} Tap to match Yahoo if it's different.</span></div></div>` : ""}
@@ -1472,7 +1554,7 @@ if (fileTeam.version && store.get("teamFrom", "") !== fileTeam.version) {
 let taken = new Set(store.get("taken", []));
 const saveTeam = () => { store.set("team", team); store.set("ir", [...irSet]); store.set("elig", elig); store.set("taken", [...taken]); };
 const onTeam = id => team.includes(id);
-const teamState = { tab: "lineup", moves: "season" };
+const teamState = { tab: "lineup", moves: "season", moving: null };
 const ROSTER_MAX = Object.values(C.slots).reduce((a, b) => a + b, 0) + (C.bench || 4);
 const GPW = 3.3; // average games per team per week
 const avg = xs => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
@@ -1505,10 +1587,10 @@ function toggleElig(id, pos) {
 
 const SLOTS = [];
 Object.entries(C.slots).forEach(([k, v]) => { for (let i = 0; i < v; i++) SLOTS.push(k); });
-function lineup() {
+const fits = (p, s) => s === "BN" ? true : s === "Util" ? !isG(p) : eligOf(p).includes(s);
+function autoLineup() {
   const active = team.filter(id => !irSet.has(id)).map(id => P.get(id)).filter(Boolean).sort((a, b) => projTG(b) - projTG(a));
   const slots = SLOTS.map(s => ({ s, p: null }));
-  const fits = (p, s) => s === "Util" ? !isG(p) : eligOf(p).includes(s);
   const bench = [];
   for (const p of active) {
     let sl = slots.find(x => !x.p && x.s !== "Util" && fits(p, x.s));
@@ -1523,7 +1605,35 @@ function lineup() {
     if (!sl) sl = slots.find(x => !x.p && x.s === "Util" && fits(p, "Util"));
     if (sl) sl.p = p; else bench.push(p);
   }
-  return { slots, bench, ir: team.filter(id => irSet.has(id)).map(id => P.get(id)).filter(Boolean) };
+  return { slots, bench };
+}
+let manual = store.get("lineup", null);
+function lineup() {
+  const ir = team.filter(id => irSet.has(id)).map(id => P.get(id)).filter(Boolean);
+  if (!manual) return { ...autoLineup(), ir, manual: false };
+  const active = new Set(team.filter(id => !irSet.has(id)));
+  const slots = SLOTS.map((s, i) => { const p = active.has(manual[i]) ? P.get(manual[i]) : null; return { s, p: p && fits(p, s) ? p : null }; });
+  const placed = new Set(slots.filter(x => x.p).map(x => x.p.id));
+  let bench = [...active].filter(id => !placed.has(id)).map(id => P.get(id)).filter(Boolean).sort((a, b) => projTG(b) - projTG(a));
+  slots.forEach(x => { if (!x.p) { const c = bench.find(b => fits(b, x.s)); if (c) { x.p = c; bench = bench.filter(b => b !== c); } } });
+  return { slots, bench, ir, manual: true };
+}
+// Lineup swaps (tap a position ring, then a highlighted spot)
+const keyLabel = (L, k) => k[0] === "S" ? L.slots[+k.slice(1)].s : "BN";
+const keyPlayer = (L, k) => k[0] === "S" ? L.slots[+k.slice(1)].p : P.get(+k.slice(1));
+function canSwap(L, from, to) {
+  if (from === to) return false;
+  const a = keyPlayer(L, from), b = keyPlayer(L, to);
+  if (!a || (from[0] === "B" && to[0] === "B")) return false;
+  return fits(a, keyLabel(L, to)) && (!b || fits(b, keyLabel(L, from)));
+}
+function doSwap(L, from, to) {
+  const arr = L.slots.map(x => x.p ? x.p.id : null);
+  const a = keyPlayer(L, from), b = keyPlayer(L, to);
+  if (from[0] === "S") arr[+from.slice(1)] = b ? b.id : null;
+  if (to[0] === "S") arr[+to.slice(1)] = a.id;
+  manual = arr; store.set("lineup", manual);
+  toast(b ? `Swapped ${a.name} and ${b.name}` : `Moved ${a.name} to ${keyLabel(L, to)}`);
 }
 
 // What a typical starter looks like in your league, per slot type
@@ -1681,18 +1791,24 @@ function moveCard(m) {
   </div>`;
 }
 
-function slotRow(label, p) {
-  if (!p) return `<div class="row slotrow empty-slot"><span class="slot s-${label}">${label}</span><span class="who"><b class="muted">Empty</b><span class="meta">Add a ${label === "Util" ? "skater" : label} below</span></span></div>`;
-  const s = `${f2(projTG(p))}`;
-  return `<button class="row slotrow" data-pid="${p.id}"><span class="slot s-${label}">${label}</span>
+function slotRow(label, p, key, L) {
+  const mv = teamState.moving;
+  const state = !mv || !L ? "" : key === mv ? "moving" : canSwap(L, mv, key) ? "target" : "dim";
+  const ring = p && key && !mv ? `<button class="slot s-${label}" data-move="${key}" aria-label="Move ${esc(p.name)}">${label}</button>`
+    : key === mv ? `<button class="slot s-${label}" data-move="${key}" aria-label="Cancel move">${label}</button>`
+    : `<span class="slot s-${label}">${label}</span>`;
+  const attrs = state === "target" ? `data-swap="${key}"` : !mv && p ? `data-pid="${p.id}"` : "";
+  if (!p) return `<div class="row slotrow empty-slot ${state}" ${attrs}>${ring}<span class="who"><b class="muted">Empty</b><span class="meta">${state === "target" ? "Tap to move him here" : `Add a ${label === "Util" ? "skater" : label} below`}</span></span></div>`;
+  return `<div class="row slotrow ${state}" ${attrs}>${ring}
     <span class="who"><b>${esc(p.name)}</b>${meta(p)}</span>
-    <span class="val"><b>${s}</b><small>${nz(p[gKey()]) ? "" : plural(p[gKey()], "game") + (nxtFocus() ? " next wk" : " left")}</small></span></button>`;
+    <span class="val"><b>${f2(projTG(p))}</b><small>${state === "target" ? "Tap to swap" : nz(p[gKey()]) ? "" : plural(p[gKey()], "game") + (nxtFocus() ? " next wk" : " left")}</small></span></div>`;
 }
 
 function renderTeam() {
   const el = document.getElementById("v-team");
   if (!el) return;
   const L = lineup();
+  if (teamState.moving && !keyPlayer(L, teamState.moving)) teamState.moving = null;
   const tabs = seg("ttab", [["lineup", "Lineup"], ["report", "Report"], ["moves", "Moves"]], teamState.tab, true);
   let body = "";
   if (!team.length) {
@@ -1703,13 +1819,14 @@ function renderTeam() {
     const lgWk = SLOTS.reduce((s, sl) => s + (LG[sl] || 0), 0) * GPW;
     const thisWk = starters.reduce((s, p) => s + (p[wkKey()] || 0), 0);
     body = `<div class="tsum"><div><b>${f0(mineWk)}</b><span>points in a typical week</span></div><div><b>${f0(lgWk)}</b><span>typical team in your league</span></div><div><b>${f0(thisWk)}</b><span>${nxtFocus() ? "projected next week" : "left this week"}</span></div></div>
-      <h2 class="sub2">Starters</h2>
-      <div class="list">${L.slots.map(x => slotRow(x.s, x.p)).join("")}</div>
+      ${teamState.moving ? `<div class="movebar"><span>Moving <b>${esc(keyPlayer(L, teamState.moving).name)}</b>. Tap a highlighted spot.</span><button class="btn" data-cancelmove>Cancel</button></div>` : ""}
+      <div class="sub2 sbar"><h2>Starters</h2>${L.manual ? `<button class="btn ghost small" data-autolineup>Best lineup</button>` : `<span class="cnt">Best lineup</span>`}</div>
+      <div class="list">${L.slots.map((x, i) => slotRow(x.s, x.p, "S" + i, L)).join("")}</div>
       <h2 class="sub2">Bench <span class="cnt">${L.bench.length} of ${C.bench}</span></h2>
-      ${L.bench.length ? `<div class="list">${L.bench.map(p => slotRow("BN", p)).join("")}</div>` : `<p class="hint">No one on the bench.</p>`}
+      ${L.bench.length ? `<div class="list">${L.bench.map(p => slotRow("BN", p, "B" + p.id, L)).join("")}</div>` : `<p class="hint">No one on the bench.</p>`}
       <h2 class="sub2">Injured reserve <span class="cnt">${L.ir.length} of ${C.irSlots}</span></h2>
       ${L.ir.length ? `<div class="list">${L.ir.map(p => slotRow("IR", p)).join("")}</div>` : `<p class="hint">Tap a player and choose <b>Move to IR</b> when he's hurt.</p>`}
-      <p class="hint" style="margin-top:14px">The app fills your starting spots with your highest projected players. Tap a player to set his Yahoo positions if he qualifies at more than one.</p>`;
+      <p class="hint" style="margin-top:14px">Tap a position ring to move a player, then tap where he should go. Only spots he can play light up. Tap a name to open his player card.</p>`;
   } else if (teamState.tab === "report") {
     const { pros, cons } = prosCons(L);
     body = `<h2 class="sub2">Team shape</h2>${shapeHTML(L)}
@@ -1733,6 +1850,12 @@ function renderTeam() {
   picker(document.getElementById("tPick"), "Add a player to your roster", addToTeam);
 }
 document.getElementById("v-team").addEventListener("click", e => {
+  const mvb = e.target.closest("[data-move]");
+  if (mvb) { e.stopPropagation(); teamState.moving = teamState.moving === mvb.dataset.move ? null : mvb.dataset.move; return renderTeam(); }
+  const sw = e.target.closest("[data-swap]");
+  if (sw && teamState.moving) { e.stopPropagation(); doSwap(lineup(), teamState.moving, sw.dataset.swap); teamState.moving = null; renderTeam(); renderWeek(); return; }
+  if (e.target.closest("[data-cancelmove]")) { teamState.moving = null; return renderTeam(); }
+  if (e.target.closest("[data-autolineup]")) { manual = null; store.set("lineup", null); teamState.moving = null; toast("Best lineup set"); return renderTeam(); }
   const s = e.target.closest("[data-seg]");
   if (s) { if (s.dataset.seg === "ttab") teamState.tab = s.dataset.val; else teamState.moves = s.dataset.val; return renderTeam(); }
   const c2 = e.target.closest("[data-cmp2]");
@@ -1757,11 +1880,12 @@ function renderGuide() {
       <p>For goalies, one goal against cancels about ${f1(0.85 / 0.2)} saves, so a goalie who faces lots of shots still scores in a loss.</p>`, true)}
     ${sec("The pages", `<dl>
       <dt>This week</dt><dd>Your weekly briefing: which teams play the most, the best pickups, goalie starts, who's hot or cold, and who's getting lucky. On Sundays it switches to next week.</dd>
-      <dt>My team</dt><dd>Add your Yahoo roster once (it's saved on this device). The app sets your best lineup, grades each position against a typical team in your league, lists strengths and weak spots, and suggests who to drop and who to add, both for the rest of the season and for this week's schedule.</dd>
+      <dt>My team</dt><dd>Your roster loads from your league file. Tap a position ring to swap players between spots, like in Yahoo, or tap Best lineup to let the app choose. The app sets your best lineup, grades each position against a typical team in your league, lists strengths and weak spots, and suggests who to drop and who to add, both for the rest of the season and for this week's schedule.</dd>
       <dt>Rankings</dt><dd>Every player ranked by your scoring. Hidden value shows players your scoring rates very differently from plain NHL points, which is your edge over league-mates.</dd>
       <dt>Compare</dt><dd>Up to four players side by side. The best number in each row is highlighted.</dd>
       <dt>Trade</dt><dd>Line up a trade. The puck slides toward whoever comes out ahead.</dd>
-      <dt>Player cards</dt><dd>Tap any player, anywhere, to see his card, send him to Compare or Trade, or add him to My team.</dd></dl>`)}
+      <dt>Player cards</dt><dd>Tap any player, anywhere, to see his card, send him to Compare or Trade, or add him to My team.</dd>
+      <dt>Trade ideas</dt><dd>Each player card suggests a one-for-one trade that should look fair to the other manager, judged by the season numbers Yahoo shows, while your projections say you come out ahead. On your players it suggests who to target; on other players it suggests who to offer. It can't see other rosters, so check who owns the player first.</dd></dl>`)}
     ${sec("What the numbers mean", `<dl>
       <dt>Points (FP)</dt><dd>Fantasy points with your league's scoring.</dd>
       <dt>Projected per game</dt><dd>What a player should score per game for the rest of the season. See "How projections work".</dd>
