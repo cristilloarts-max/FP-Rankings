@@ -65,8 +65,10 @@ GOALIE_SCORING = {
 }
 
 LEAGUE_TEAMS = 12                                         # teams in your league
-ROSTER_SLOTS = {"C": 2, "LW": 2, "RW": 2, "D": 4, "G": 2}  # starting slots per team
-SKATERS_ROSTERED_PER_TEAM = 14                            # starters + bench skaters (for "probably available")
+ROSTER_SLOTS = {"C": 2, "LW": 2, "RW": 2, "D": 4, "Util": 1, "G": 2}  # starting slots per team
+BENCH_SLOTS = 4
+IR_SLOTS = 3
+SKATERS_ROSTERED_PER_TEAM = 14   # starters + bench skaters (used to guess who's a free agent)
 
 # Fantasy playoff window. Leave as None to use the last 3 weeks of the NHL regular season,
 # or set real dates like "2027-03-15" / "2027-04-04".
@@ -483,11 +485,18 @@ def build_skaters(raw, teams, min_gp):
     for pos in ("C", "LW", "RW", "D"):
         rank([p for p in q if p["pos"] == pos], "proj", "posRank")
 
+    # Replacement level: fill every team's starting spots (including Util) with the best
+    # projections, then the best player left at each position is what a free agent looks like.
+    by_pos = {pos: sorted([p for p in q if p["pos"] == pos], key=lambda x: -x["proj"]) for pos in ("C", "LW", "RW", "D")}
+    starters = set()
+    for pos, pool in by_pos.items():
+        starters.update(p["id"] for p in pool[:LEAGUE_TEAMS * ROSTER_SLOTS.get(pos, 2)])
+    rest = sorted([p for p in q if p["id"] not in starters], key=lambda x: -x["proj"])
+    starters.update(p["id"] for p in rest[:LEAGUE_TEAMS * ROSTER_SLOTS.get("Util", 0)])
     repl = {}
-    for pos in ("C", "LW", "RW", "D"):
-        pool = sorted((p["proj"] for p in q if p["pos"] == pos), reverse=True)
-        idx = LEAGUE_TEAMS * ROSTER_SLOTS.get(pos, 2)
-        repl[pos] = pool[min(idx, len(pool) - 1)] if pool else 0.0
+    for pos, pool in by_pos.items():
+        left = [p for p in pool if p["id"] not in starters]
+        repl[pos] = left[0]["proj"] if left else (pool[-1]["proj"] if pool else 0.0)
     for p in players:
         p["vor"] = p["proj"] - repl.get(p["pos"], 0.0)
         p["rosVor"] = p["vor"] * (p["ros"] or 0)
@@ -822,8 +831,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .trio span{font-size:12px;color:var(--muted)}
   .trio .lead b{color:var(--blue)}
   .kv{background:var(--surface);border-radius:14px;overflow:hidden;margin-top:10px}
-  .kv div{display:flex;justify-content:space-between;gap:10px;padding:10px 14px;border-top:1px solid var(--line);font-size:14px}
-  .kv div:first-child{border-top:0}
+  .kv > div{display:flex;justify-content:space-between;gap:10px;padding:10px 14px;border-top:1px solid var(--line);font-size:14px}
+  .kv > div:first-child{border-top:0}
   .kv span{color:var(--muted)}
   .kv b{font-weight:600;text-align:right}
   .bigsplit{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--heat0);margin:8px 0 4px}
@@ -852,6 +861,47 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     background:var(--ink);color:var(--ice);padding:10px 16px;border-radius:12px;font-weight:600;font-size:14px;
     transition:all .2s;pointer-events:none;white-space:nowrap}
   .toast.show{opacity:1;transform:translate(-50%,0)}
+  /* header help */
+  .tr{display:flex;align-items:center;gap:10px}
+  .help{border:1px solid var(--line);background:var(--surface);width:30px;height:30px;border-radius:50%;font-weight:700;color:var(--muted);font-size:14px}
+  /* my team */
+  .tsum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0 4px}
+  .tsum div{background:var(--surface);border-radius:14px;padding:10px 12px}
+  .tsum b{display:block;font:800 30px/1 var(--display)}
+  .tsum div:first-child b{color:var(--blue)}
+  .tsum span{font-size:12px;color:var(--muted);line-height:1.3;display:block;margin-top:2px}
+  .sub2{font-size:20px;margin:22px 0 8px;display:flex;align-items:baseline;gap:8px}
+  .sub2 .cnt{font:500 13px/1 var(--body);color:var(--muted)}
+  .slot{flex:none;width:38px;text-align:center;font-size:11px;font-weight:700;letter-spacing:.02em;padding:4px 0;border-radius:6px;background:var(--heat0);color:var(--muted)}
+  .empty-slot .slot{background:var(--red-soft);color:var(--red)}
+  .shape{background:var(--surface);border-radius:16px;padding:12px 14px}
+  .sh-row{display:grid;grid-template-columns:38px 1fr 40px 62px;gap:10px;align-items:center;padding:7px 0}
+  .sh-l{font-size:12px;font-weight:700;color:var(--muted)}
+  .sh-bar{position:relative;height:10px;border-radius:5px;background:var(--heat0)}
+  .sh-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:5px;background:var(--faint)}
+  .sh-bar i.strong{background:var(--blue)} .sh-bar i.weak{background:var(--red)}
+  .sh-bar em{position:absolute;top:-4px;width:2px;height:18px;background:var(--ink);transform:translateX(-1px);opacity:.7}
+  .sh-v{font:700 18px/1 var(--display);text-align:right}
+  .sh-tag{font-size:11.5px;font-weight:600;color:var(--muted);text-align:right}
+  .sh-tag.strong{color:var(--blue)} .sh-tag.weak,.sh-tag.empty{color:var(--red)}
+  .pc{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+  .pc li{background:var(--surface);border-radius:12px;padding:11px 14px 11px 16px;border-left:3px solid var(--blue);font-size:14px}
+  .pc.con li{border-left-color:var(--red)}
+  .pc .lnk,.why .lnk{background:none;border:0;padding:0;font-weight:700;text-decoration:underline;text-decoration-color:var(--faint);text-underline-offset:3px}
+  .move{background:var(--surface);border-radius:18px;padding:14px;margin-top:12px}
+  .mtop{display:flex;align-items:baseline;gap:8px}
+  .mtop b{font:800 30px/1 var(--display);color:var(--blue)}
+  .mtop span{font-size:13px;color:var(--muted)}
+  .swap{display:grid;grid-template-columns:1fr 22px 1fr;gap:8px;align-items:center;margin-top:10px}
+  .swap svg{width:22px;height:22px;stroke:var(--faint);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .mside{border:0;border-radius:12px;padding:9px 10px;text-align:left;min-width:0;background:var(--heat0)}
+  .mside.in{background:var(--blue-soft)}
+  .mside small{display:block;font-size:11px;color:var(--muted)}
+  .mside b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mside .tm{background:var(--surface)}
+  .why{font-size:14px;margin:10px 0 0;color:var(--ink)}
+  .mact{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .mact .btn{padding:8px 12px;font-size:13px}
   [hidden]{display:none !important}
 
   @media (min-width:900px){
@@ -872,18 +922,19 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <body>
 <header class="top">
   <div class="brand">FP Hockey</div>
-  <div class="upd" id="upd"></div>
+  <div class="tr"><span class="upd" id="upd"></span><button class="help" data-go="guide" aria-label="Open the guide">?</button></div>
 </header>
 <nav class="tabs" aria-label="Pages">
   <button data-v="week"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>This week</button>
+  <button data-v="team"><svg viewBox="0 0 24 24"><path d="M8 4l-4.5 3 2 4L7 10v10h10V10l1.5 1 2-4L16 4c-.8 1.4-2.2 2.2-4 2.2S8.8 5.4 8 4z"/></svg>My team</button>
   <button data-v="rank"><svg viewBox="0 0 24 24"><path d="M5 20V11M12 20V5M19 20v-6"/></svg>Rankings</button>
   <button data-v="compare"><svg viewBox="0 0 24 24"><rect x="3.5" y="4" width="7" height="16" rx="2"/><rect x="13.5" y="4" width="7" height="16" rx="2"/></svg>Compare</button>
   <button data-v="trade"><svg viewBox="0 0 24 24"><path d="M4 8h14l-3.5-3.5M20 16H6l3.5 3.5"/></svg>Trade</button>
-  <button data-v="guide"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.4a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.1-2.4 3.7M12 17h.01"/></svg>Guide</button>
 </nav>
 
 <main class="wrap">
   <section id="v-week"></section>
+  <section id="v-team" hidden></section>
   <section id="v-rank" hidden></section>
   <section id="v-compare" hidden></section>
   <section id="v-trade" hidden></section>
@@ -945,7 +996,7 @@ function seg(name, options, current, full) {
 }
 
 // ---------- navigation ----------
-const VIEWS = ["week", "rank", "compare", "trade", "guide"];
+const VIEWS = ["week", "team", "rank", "compare", "trade", "guide"];
 function go(v) {
   VIEWS.forEach(x => document.getElementById("v-" + x).hidden = x !== v);
   document.querySelectorAll("nav.tabs button").forEach(b => b.toggleAttribute("aria-current", b.dataset.v === v));
@@ -953,6 +1004,7 @@ function go(v) {
   store.set("view", v); window.scrollTo(0, 0);
 }
 document.querySelectorAll("nav.tabs button").forEach(b => b.onclick = () => go(b.dataset.v));
+document.addEventListener("click", e => { const g = e.target.closest("[data-go]"); if (g) go(g.dataset.go); });
 
 // ---------- player sheet ----------
 const sheet = document.getElementById("sheet"), scrim = document.getElementById("scrim");
@@ -977,6 +1029,10 @@ sheet.addEventListener("click", e => {
   if (b.dataset.act === "close") return closeSheet();
   if (b.dataset.act === "compare") { addCompare(id); closeSheet(); }
   if (b.dataset.act === "give" || b.dataset.act === "get") { addTrade(b.dataset.act, id); closeSheet(); }
+  if (b.dataset.act === "team-add") { addToTeam(id); closeSheet(); }
+  if (b.dataset.act === "team-rm") { removeFromTeam(id); closeSheet(); }
+  if (b.dataset.act === "ir") { toggleIR(id); closeSheet(); }
+  if (b.dataset.act === "elig") { toggleElig(id, b.dataset.pos); sheet.innerHTML = sheetHTML(P.get(id)); }
 });
 document.addEventListener("click", e => {
   const r = e.target.closest("[data-pid]");
@@ -1021,11 +1077,17 @@ function sheetHTML(p) {
     <h2 id="sheetName">${esc(p.name)}</h2>
     <div class="meta" style="font-size:13px"><span class="tm">${esc(p.team)}</span>${p.pos}${rk ? `, ${rk}` : ""}</div>
     ${body}
+    ${onTeam(p.id) && !g ? `<div class="kv"><div style="display:block"><span>Yahoo positions</span>
+      <div class="chips" style="margin-top:8px">${["C", "LW", "RW", "D"].map(x => `<button class="chip" data-act="elig" data-id="${p.id}" data-pos="${x}" aria-pressed="${eligOf(p).includes(x)}">${x}</button>`).join("")}</div>
+      <span style="font-size:12px">Tap every position he qualifies for in Yahoo. The lineup uses this.</span></div></div>` : ""}
     <div class="actions">
       <button class="btn primary" data-act="compare" data-id="${p.id}">Compare</button>
       <button class="btn" data-act="give" data-id="${p.id}">Trade away</button>
       <button class="btn" data-act="get" data-id="${p.id}">Trade for</button>
-    </div>`;
+    </div>
+    <div class="actions" style="margin-top:8px">${onTeam(p.id)
+      ? `<button class="btn" data-act="ir" data-id="${p.id}">${irSet.has(p.id) ? "Back from IR" : "Move to IR"}</button><button class="btn ghost" data-act="team-rm" data-id="${p.id}">Remove from My team</button>`
+      : `<button class="btn" data-act="team-add" data-id="${p.id}" style="flex:1">Add to My team</button>`}</div>`;
 }
 
 // ---------- THIS WEEK ----------
@@ -1376,6 +1438,283 @@ function renderTrade() {
   const cl = document.getElementById("tClear"); if (cl) cl.onclick = () => { trade = { give: [], get: [] }; saveTrade(); renderTrade(); };
 }
 
+// ---------- MY TEAM ----------
+let team = store.get("team", []).filter(id => P.has(id));
+let irSet = new Set(store.get("ir", []).filter(id => P.has(id)));
+let elig = store.get("elig", {});
+let taken = new Set(store.get("taken", []));
+const saveTeam = () => { store.set("team", team); store.set("ir", [...irSet]); store.set("elig", elig); store.set("taken", [...taken]); };
+const onTeam = id => team.includes(id);
+const teamState = { tab: "lineup", moves: "season" };
+const ROSTER_MAX = Object.values(C.slots).reduce((a, b) => a + b, 0) + (C.bench || 4);
+const GPW = 3.3; // average games per team per week
+const avg = xs => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
+
+function addToTeam(id) {
+  const p = P.get(id); if (!p) return;
+  if (!onTeam(id)) team.push(id);
+  taken.delete(id);
+  saveTeam(); renderTeam(); toast(`Added ${p.name} to My team`);
+}
+function removeFromTeam(id) {
+  const p = P.get(id);
+  team = team.filter(x => x !== id); irSet.delete(id);
+  saveTeam(); renderTeam(); if (p) toast(`Removed ${p.name} from My team`);
+}
+function toggleIR(id) {
+  const p = P.get(id);
+  if (irSet.has(id)) { irSet.delete(id); toast(`${p.name} is back in your lineup`); }
+  else { irSet.add(id); toast(`Moved ${p.name} to IR`); }
+  saveTeam(); renderTeam();
+}
+const eligOf = p => isG(p) ? ["G"] : (elig[p.id] && elig[p.id].length ? elig[p.id] : [p.pos]);
+function toggleElig(id, pos) {
+  const p = P.get(id); if (!p || isG(p)) return;
+  let e = eligOf(p).slice();
+  e = e.includes(pos) ? e.filter(x => x !== pos) : [...e, pos];
+  if (!e.length) e = [p.pos];
+  elig[id] = e; saveTeam(); renderTeam();
+}
+
+const SLOTS = [];
+Object.entries(C.slots).forEach(([k, v]) => { for (let i = 0; i < v; i++) SLOTS.push(k); });
+function lineup() {
+  const active = team.filter(id => !irSet.has(id)).map(id => P.get(id)).filter(Boolean).sort((a, b) => projTG(b) - projTG(a));
+  const slots = SLOTS.map(s => ({ s, p: null }));
+  const fits = (p, s) => s === "Util" ? !isG(p) : eligOf(p).includes(s);
+  const bench = [];
+  for (const p of active) {
+    let sl = slots.find(x => !x.p && x.s !== "Util" && fits(p, x.s));
+    if (!sl) {
+      for (const x of slots) {
+        if (x.p && x.s !== "Util" && fits(p, x.s)) {
+          const alt = slots.find(y => !y.p && y.s !== "Util" && fits(x.p, y.s));
+          if (alt) { alt.p = x.p; x.p = null; sl = x; break; }
+        }
+      }
+    }
+    if (!sl) sl = slots.find(x => !x.p && x.s === "Util" && fits(p, "Util"));
+    if (sl) sl.p = p; else bench.push(p);
+  }
+  return { slots, bench, ir: team.filter(id => irSet.has(id)).map(id => P.get(id)).filter(Boolean) };
+}
+
+// What a typical starter looks like in your league, per slot type
+const LG = (() => {
+  const T = C.leagueTeams, out = {}, used = new Set();
+  const q = SK.filter(p => p.q);
+  ["C", "LW", "RW", "D"].forEach(pos => {
+    const all = q.filter(p => p.pos === pos).sort((a, b) => b.proj - a.proj);
+    const top = all.slice(0, T * (C.slots[pos] || 0));
+    top.forEach(p => used.add(p.id));
+    out[pos] = avg(top.map(p => p.proj)); out[pos + "Max"] = all[0] ? all[0].proj : 1;
+  });
+  const util = q.filter(p => !used.has(p.id)).sort((a, b) => b.proj - a.proj).slice(0, T * (C.slots.Util || 0));
+  out.Util = avg(util.map(p => p.proj)); out.UtilMax = Math.max(out.CMax, out.LWMax, out.RWMax, out.DMax);
+  const g = GO.filter(x => x.q).sort((a, b) => b.projTG - a.projTG);
+  out.G = avg(g.slice(0, T * (C.slots.G || 0)).map(x => x.projTG)); out.GMax = g[0] ? g[0].projTG : 1;
+  return out;
+})();
+
+const nxtFocus = () => D.week.focus === "next";
+const wkKey = () => nxtFocus() ? "nxtFp" : "wkFp";
+const gKey = () => nxtFocus() ? "nxt" : "wk";
+const isAvail = p => {
+  if (onTeam(p.id) || taken.has(p.id) || !p.q) return false;
+  if (isG(p)) return (p.projRank || 999) > C.leagueTeams * ((C.slots.G || 2) + 1) && p.share >= 0.45;
+  return (p.projRank || 999) > C.leagueTeams * C.rosteredPerTeam;
+};
+
+function shapeHTML(L) {
+  const groups = Object.keys(C.slots);
+  return `<div class="shape">${groups.map(gp => {
+    const ps = L.slots.filter(x => x.s === gp);
+    const filled = ps.filter(x => x.p);
+    const mine = filled.length ? avg(ps.map(x => x.p ? projTG(x.p) : 0)) : 0;
+    const lg = LG[gp] || 0;
+    const max = Math.max(LG[gp + "Max"] || 1, mine, lg * 1.4);
+    const r = lg ? mine / lg : 1;
+    const tag = !filled.length ? ["empty", "Empty"] : r >= 1.08 ? ["strong", "Strong"] : r <= 0.92 ? ["weak", "Weak"] : ["", "Average"];
+    return `<div class="sh-row"><span class="sh-l">${gp}</span>
+      <div class="sh-bar" title="Yours ${f2(mine)} vs typical ${f2(lg)}"><i class="${tag[0]}" style="width:${Math.min(100, mine / max * 100)}%"></i><em style="left:${Math.min(100, lg / max * 100)}%"></em></div>
+      <span class="sh-v">${f2(mine)}</span><span class="sh-tag ${tag[0]}">${tag[1]}</span></div>`;
+  }).join("")}
+  <p class="hint" style="margin-top:10px">Bars show your starters' projected points per game. The tick marks a typical starter in a ${C.leagueTeams}-team league.</p></div>`;
+}
+
+function prosCons(L) {
+  const pros = [], cons = [];
+  const starters = L.slots.filter(x => x.p).map(x => x.p);
+  const sk = starters.filter(p => !isG(p));
+  const nameL = p => `<button class="lnk" data-pid="${p.id}">${esc(p.name)}</button>`;
+  const posName = { C: "centres", LW: "left wings", RW: "right wings", D: "defence", Util: "Util spot", G: "goalies" };
+  Object.keys(C.slots).forEach(gp => {
+    const ps = L.slots.filter(x => x.s === gp);
+    const empty = ps.filter(x => !x.p).length;
+    if (empty) {
+      cons.push(empty === ps.length
+        ? `Your ${gp} spot${ps.length > 1 ? "s are" : " is"} empty. Add a ${gp === "Util" ? "skater" : gp} so you stop losing points every game.`
+        : `${empty} of your ${ps.length} ${gp} spots ${empty > 1 ? "are" : "is"} empty. Add a ${gp} so you stop losing points every game.`);
+      return;
+    }
+    const mine = avg(ps.map(x => projTG(x.p))), lg = LG[gp];
+    if (!lg) return;
+    const r = mine / lg;
+    if (r >= 1.08) pros.push(`Your ${posName[gp]} ${gp === "Util" ? "is" : "are"} a strength: ${f2(mine)} projected per game, against ${f2(lg)} for a typical starter.`);
+    if (r <= 0.92) cons.push(`Your ${posName[gp]} ${gp === "Util" ? "is" : "are"} below a typical starter: ${f2(mine)} per game against ${f2(lg)}.`);
+  });
+  const names = ps => ps.length === 1 ? nameL(ps[0]) : ps.slice(0, -1).map(nameL).join(", ") + " and " + nameL(ps[ps.length - 1]);
+  const weakS = starters.filter(p => (p.vor || 0) < 0);
+  if (weakS.length) cons.push(`${names(weakS)} ${weakS.length > 1 ? "are" : "is"} starting, but a free agent at the same position would score about as much. Check Moves for upgrades.`);
+  starters.filter(isG).forEach(g => {
+    if (g.share >= 0.75) pros.push(`${nameL(g)} starts ${pct(g.share * 100)} of his team's games. That steady workload is worth a lot in your scoring.`);
+    else if (g.share < 0.55) cons.push(`${nameL(g)} only starts ${pct(g.share * 100)} of his team's games. Goalie starts are your biggest weekly lever.`);
+  });
+  if (sk.length >= 4) {
+    const tot = sk.reduce((s, p) => s + p.proj, 0) || 1;
+    const peri = sk.reduce((s, p) => s + p.peri * p.proj, 0) / tot;
+    if (peri >= 38) pros.push(`${pct(peri)} of your skaters' points come from shots, hits and blocks, so your weekly floor is steady.`);
+    else if (peri <= 25) cons.push(`Only ${pct(peri)} of your skaters' points come from shots, hits and blocks. Your weeks will swing with goals. A hitting, shot-blocking defenceman would steady things.`);
+  }
+  const ros = team.map(id => P.get(id)).filter(Boolean);
+  const sell = ros.filter(p => !isG(p) && !nz(p.shDiff) && p.shDiff >= 5);
+  if (sell.length) cons.push(`${names(sell)} ${sell.length > 1 ? "are" : "is"} scoring on far more of ${sell.length > 1 ? "their" : "his"} shots than usual. Goals should slow down, so ${sell.length > 1 ? "their" : "his"} trade value may be at its peak.`);
+  const buy = ros.filter(p => !isG(p) && !nz(p.shDiff) && p.shDiff <= -4);
+  if (buy.length) pros.push(`${names(buy)} ${buy.length > 1 ? "are" : "is"} shooting below ${buy.length > 1 ? "their" : "his"} usual rate. Expect more goals soon.`);
+  const hotP = ros.filter(p => !isG(p) && !nz(p.recFpg) && p.recGp >= 3 && p.recFpg - p.fpg >= 1.5);
+  if (hotP.length) pros.push(`${names(hotP)} ${hotP.length > 1 ? "are" : "is"} hot, scoring well above ${hotP.length > 1 ? "their" : "his"} season pace over the last ${C.recentDays} days.`);
+  const coldP = ros.filter(p => !isG(p) && !nz(p.recFpg) && p.recGp >= 3 && p.recFpg - p.fpg <= -1.5);
+  if (coldP.length) cons.push(`${names(coldP)} ${coldP.length > 1 ? "have" : "has"} cooled off over the last ${C.recentDays} days. Worth watching, not panicking over.`);
+  const gk = gKey();
+  const light = starters.filter(p => !nz(p[gk]) && p[gk] <= 1);
+  const daysLeft = Math.round((dt(D.week.sun) - dt(D.week.today)) / 864e5) + 1;
+  if (light.length >= 3 && (nxtFocus() || daysLeft >= 4)) cons.push(`${plural(light.length, "starter")} ${light.length === 1 ? "has" : "have"} one game or fewer ${nxtFocus() ? "next week" : "left this week"}. Check the Moves tab for streamers.`);
+  if (D.week.ps) {
+    const all = Object.values(D.teams).map(t => t.po).filter(v => !nz(v));
+    const lgPo = avg(all), myPo = avg(starters.map(p => p.po).filter(v => !nz(v)));
+    if (all.length && myPo >= lgPo + 0.6) pros.push(`Good playoff schedule: your starters average ${f1(myPo)} games in your playoff weeks, against ${f1(lgPo)} for the league.`);
+    if (all.length && myPo <= lgPo - 0.6) cons.push(`Light playoff schedule: your starters average ${f1(myPo)} games in your playoff weeks, against ${f1(lgPo)} for the league.`);
+  }
+  if (L.ir.length > (C.irSlots || 3)) cons.push(`You have ${L.ir.length} players on IR but only ${C.irSlots} IR spots.`);
+  const activeN = team.length - L.ir.length;
+  if (activeN > ROSTER_MAX) cons.push(`You have ${activeN} active players, ${activeN - ROSTER_MAX} more than your ${ROSTER_MAX} roster spots.`);
+  return { pros, cons };
+}
+
+function seasonMoves(L) {
+  const benchIds = new Set(L.bench.map(p => p.id));
+  const roster = team.filter(id => !irSet.has(id)).map(id => P.get(id)).filter(Boolean);
+  const drops = roster.slice().sort((a, b) => (a.rosVor || 0) - (b.rosVor || 0)).slice(0, 6);
+  const used = new Set(), out = [];
+  for (const d of drops) {
+    const pool = (isG(d) ? GO : SK).filter(c => isAvail(c) && !used.has(c.id) && (isG(d) || benchIds.has(d.id) || eligOf(d).includes(c.pos)));
+    const c = pool.sort((a, b) => b.rosFp - a.rosFp)[0];
+    if (!c) continue;
+    const gain = c.rosFp - d.rosFp;
+    if (gain < 8) continue;
+    used.add(c.id);
+    const why = [`${esc(c.name)} projects ${f2(projTG(c))} a game against ${f2(projTG(d))}.`];
+    if (isG(d) && c.share - d.share >= 0.1) why.push(`He starts ${pct(c.share * 100)} of his team's games, ${esc(d.name)} ${pct(d.share * 100)}.`);
+    if (!isG(d) && c.peri - d.peri >= 10) why.push(`More of his points come from hits, blocks and shots (${pct(c.peri)}), so they're steadier.`);
+    if ((c.ros || 0) - (d.ros || 0) >= 2) why.push(`His team has ${(c.ros || 0) - (d.ros || 0)} more games left.`);
+    out.push({ d, c, gain, unit: "points rest of season", why: why.join(" ") });
+  }
+  return out.sort((a, b) => b.gain - a.gain).slice(0, 5);
+}
+
+function weekMoves(L) {
+  const k = wkKey(), gk = gKey();
+  const benchIds = new Set(L.bench.map(p => p.id));
+  const roster = team.filter(id => !irSet.has(id)).map(id => P.get(id)).filter(Boolean);
+  const byVor = roster.slice().sort((a, b) => (a.rosVor || 0) - (b.rosVor || 0));
+  const droppable = byVor.slice(0, Math.max(2, Math.ceil(roster.length / 3))).sort((a, b) => (a[k] || 0) - (b[k] || 0));
+  const used = new Set(), out = [];
+  for (const d of droppable) {
+    const pool = (isG(d) ? GO : SK).filter(c => isAvail(c) && !used.has(c.id) && (isG(d) || benchIds.has(d.id) || eligOf(d).includes(c.pos)));
+    const c = pool.sort((a, b) => (b[k] || 0) - (a[k] || 0))[0];
+    if (!c) continue;
+    const gain = (c[k] || 0) - (d[k] || 0);
+    if (gain < 3) continue;
+    used.add(c.id);
+    const why = isG(d)
+      ? `About ${f1(nxtFocus() ? c.nxtStarts : c.wkStarts)} starts for ${esc(c.name)}, against ${f1(nxtFocus() ? d.nxtStarts : d.wkStarts)} for ${esc(d.name)}.`
+      : `${esc(c.name)} has ${plural(c[gk] || 0, "game")} ${nxtFocus() ? "next week" : "left this week"}, ${esc(d.name)} has ${d[gk] || 0}. It's a short-term stream: swap back later if you like.`;
+    out.push({ d, c, gain, unit: nxtFocus() ? "points next week" : "points this week", why });
+  }
+  return out.sort((a, b) => b.gain - a.gain).slice(0, 4);
+}
+
+function moveCard(m) {
+  const side = (p, lbl, cls) => `<button class="mside ${cls}" data-pid="${p.id}"><small>${lbl}</small><b>${esc(p.name)}</b>${meta(p)}</button>`;
+  return `<div class="move">
+    <div class="mtop"><b>+${f0(m.gain)}</b><span>${m.unit}</span></div>
+    <div class="swap">${side(m.d, "Drop", "out")}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>${side(m.c, "Add", "in")}</div>
+    <p class="why">${m.why}</p>
+    <div class="mact"><button class="btn" data-cmp2="${m.d.id},${m.c.id}">Compare them</button><button class="btn ghost" data-taken="${m.c.id}">${esc(m.c.name.split(" ").slice(-1)[0])} isn't available</button></div>
+  </div>`;
+}
+
+function slotRow(label, p) {
+  if (!p) return `<div class="row slotrow empty-slot"><span class="slot">${label}</span><span class="who"><b class="muted">Empty</b><span class="meta">Add a ${label === "Util" ? "skater" : label} below</span></span></div>`;
+  const s = `${f2(projTG(p))}`;
+  return `<button class="row slotrow" data-pid="${p.id}"><span class="slot">${label}</span>
+    <span class="who"><b>${esc(p.name)}</b><span class="meta"><span class="tm">${esc(p.team)}</span>${eligOf(p).join("/")}</span></span>
+    <span class="val"><b>${s}</b><small>${nz(p[gKey()]) ? "" : plural(p[gKey()], "game") + (nxtFocus() ? " next wk" : " left")}</small></span></button>`;
+}
+
+function renderTeam() {
+  const el = document.getElementById("v-team");
+  if (!el) return;
+  const L = lineup();
+  const tabs = seg("ttab", [["lineup", "Lineup"], ["report", "Report"], ["moves", "Moves"]], teamState.tab, true);
+  let body = "";
+  if (!team.length) {
+    body = `<div class="list" style="margin-top:14px"><div class="empty">Add the players on your Yahoo roster. They're saved on this device, and the app will set your best lineup, grade it, and suggest who to drop and add.<br><br>Tip: you can also tap any player in the app and choose <b>Add to My team</b>.</div></div>`;
+  } else if (teamState.tab === "lineup") {
+    const starters = L.slots.filter(x => x.p).map(x => x.p);
+    const mineWk = starters.reduce((s, p) => s + projTG(p), 0) * GPW;
+    const lgWk = SLOTS.reduce((s, sl) => s + (LG[sl] || 0), 0) * GPW;
+    const thisWk = starters.reduce((s, p) => s + (p[wkKey()] || 0), 0);
+    body = `<div class="tsum"><div><b>${f0(mineWk)}</b><span>points in a typical week</span></div><div><b>${f0(lgWk)}</b><span>typical team in your league</span></div><div><b>${f0(thisWk)}</b><span>${nxtFocus() ? "projected next week" : "left this week"}</span></div></div>
+      <h2 class="sub2">Starters</h2>
+      <div class="list">${L.slots.map(x => slotRow(x.s, x.p)).join("")}</div>
+      <h2 class="sub2">Bench <span class="cnt">${L.bench.length} of ${C.bench}</span></h2>
+      ${L.bench.length ? `<div class="list">${L.bench.map(p => slotRow("BN", p)).join("")}</div>` : `<p class="hint">No one on the bench.</p>`}
+      <h2 class="sub2">Injured reserve <span class="cnt">${L.ir.length} of ${C.irSlots}</span></h2>
+      ${L.ir.length ? `<div class="list">${L.ir.map(p => slotRow("IR", p)).join("")}</div>` : `<p class="hint">Tap a player and choose <b>Move to IR</b> when he's hurt.</p>`}
+      <p class="hint" style="margin-top:14px">The app fills your starting spots with your highest projected players. Tap a player to set his Yahoo positions if he qualifies at more than one.</p>`;
+  } else if (teamState.tab === "report") {
+    const { pros, cons } = prosCons(L);
+    body = `<h2 class="sub2">Team shape</h2>${shapeHTML(L)}
+      <h2 class="sub2">Strengths</h2>${pros.length ? `<ul class="pc pro">${pros.map(t => `<li>${t}</li>`).join("")}</ul>` : `<p class="hint">Nothing stands out yet.</p>`}
+      <h2 class="sub2">Weak spots</h2>${cons.length ? `<ul class="pc con">${cons.map(t => `<li>${t}</li>`).join("")}</ul>` : `<p class="hint">No weak spots found. Nice.</p>`}`;
+  } else {
+    const ms = teamState.moves === "season" ? seasonMoves(L) : weekMoves(L);
+    body = `<div style="margin:16px 0 4px">${seg("tmoves", [["season", "Rest of season"], ["week", nxtFocus() ? "Next week" : "This week"]], teamState.moves)}</div>
+      <p class="hint">${teamState.moves === "season"
+        ? "Permanent upgrades: your weakest players swapped for better ones who are probably free agents."
+        : "Streams: swap a low-value player for someone with more games, then swap back later."}
+        It can't see your league's rosters, so check Yahoo first. Tap <b>isn't available</b> to hide a player.</p>
+      ${ms.length ? ms.map(moveCard).join("") : `<div class="list"><div class="empty">No clear upgrades right now. Your roster beats what's likely on waivers.</div></div>`}
+      ${taken.size ? `<button class="more" data-untake>Show hidden players again (${taken.size})</button>` : ""}`;
+  }
+  el.innerHTML = `<h1>My team</h1>
+    <p class="intro">${team.length ? `${plural(team.length - L.ir.length, "active player")} of ${ROSTER_MAX}${L.ir.length ? `, ${L.ir.length} on IR` : ""}.` : "Build your roster to get a lineup, a report card and moves to make."}</p>
+    ${team.length ? tabs : ""}
+    <div id="tPick" style="margin-top:14px"></div>
+    ${body}`;
+  picker(document.getElementById("tPick"), "Add a player to your roster", addToTeam);
+}
+document.getElementById("v-team").addEventListener("click", e => {
+  const s = e.target.closest("[data-seg]");
+  if (s) { if (s.dataset.seg === "ttab") teamState.tab = s.dataset.val; else teamState.moves = s.dataset.val; return renderTeam(); }
+  const c2 = e.target.closest("[data-cmp2]");
+  if (c2) { cmp = c2.dataset.cmp2.split(",").map(Number); store.set("cmp", cmp); renderCompare(); go("compare"); return; }
+  const t = e.target.closest("[data-taken]");
+  if (t) { taken.add(+t.dataset.taken); saveTeam(); renderTeam(); toast("Hidden from suggestions"); return; }
+  if (e.target.closest("[data-untake]")) { taken.clear(); saveTeam(); renderTeam(); }
+});
+
 // ---------- GUIDE ----------
 function renderGuide() {
   const s = Object.fromEntries(C.skaterScoring);
@@ -1391,10 +1730,11 @@ function renderGuide() {
       <p>For goalies, one goal against cancels about ${f1(0.85 / 0.2)} saves, so a goalie who faces lots of shots still scores in a loss.</p>`, true)}
     ${sec("The pages", `<dl>
       <dt>This week</dt><dd>Your weekly briefing: which teams play the most, the best pickups, goalie starts, who's hot or cold, and who's getting lucky. On Sundays it switches to next week.</dd>
+      <dt>My team</dt><dd>Add your Yahoo roster once (it's saved on this device). The app sets your best lineup, grades each position against a typical team in your league, lists strengths and weak spots, and suggests who to drop and who to add, both for the rest of the season and for this week's schedule.</dd>
       <dt>Rankings</dt><dd>Every player ranked by your scoring. Hidden value shows players your scoring rates very differently from plain NHL points, which is your edge over league-mates.</dd>
       <dt>Compare</dt><dd>Up to four players side by side. The best number in each row is highlighted.</dd>
       <dt>Trade</dt><dd>Line up a trade. The puck slides toward whoever comes out ahead.</dd>
-      <dt>Player cards</dt><dd>Tap any player, anywhere, to see his card and send him to Compare or Trade.</dd></dl>`)}
+      <dt>Player cards</dt><dd>Tap any player, anywhere, to see his card, send him to Compare or Trade, or add him to My team.</dd></dl>`)}
     ${sec("What the numbers mean", `<dl>
       <dt>Points (FP)</dt><dd>Fantasy points with your league's scoring.</dd>
       <dt>Projected per game</dt><dd>What a player should score per game for the rest of the season. See "How projections work".</dd>
@@ -1410,7 +1750,8 @@ function renderGuide() {
     ${sec("What it can't see yet", `<ul>
       <li>Injuries, line changes and confirmed starting goalies. Check Yahoo or Daily Faceoff before you set your lineup.</li>
       <li>Yahoo positions. It uses NHL positions, and some players qualify at two spots on Yahoo.</li>
-      <li>Your league's rosters. Pickups assume players ranked outside the top ${C.leagueTeams * C.rosteredPerTeam} are available.</li>
+      <li>Your league's rosters. Pickups and suggested moves assume players ranked outside the top ${C.leagueTeams * C.rosteredPerTeam} are available. Mark anyone who isn't, and the app will skip him.</li>
+      <li>Your phone and computer keep separate copies of My team, Compare and Trade.</li>
       ${C.hasLast ? "" : "<li>Last season's stats didn't load on today's update, so projections use this season only.</li>"}
       ${C.hasRecent ? "" : "<li>Recent stats didn't load on today's update, so the Form lists are empty.</li>"}
       ${C.hasSchedule ? "" : "<li>Schedules didn't load on today's update, so weekly numbers are estimates.</li>"}</ul>`)}
@@ -1420,7 +1761,7 @@ function renderGuide() {
 }
 
 // ---------- start ----------
-renderWeek(); renderRank(); renderCompare(); renderTrade(); renderGuide();
+renderWeek(); renderTeam(); renderRank(); renderCompare(); renderTrade(); renderGuide();
 const saved = store.get("view", "week");
 go(VIEWS.includes(saved) ? saved : "week");
 </script>
@@ -1455,6 +1796,7 @@ def build(raw, season_id, min_gp, out_dir, today=None, open_browser=True):
             "skaterScoring": [[LEAGUE_LABELS[k], v] for k, v in SKATER_SCORING.items()],
             "goalieScoring": [[LEAGUE_LABELS[k], v] for k, v in GOALIE_SCORING.items()],
             "leagueTeams": LEAGUE_TEAMS, "slots": ROSTER_SLOTS, "rosteredPerTeam": SKATERS_ROSTERED_PER_TEAM,
+            "bench": BENCH_SLOTS, "irSlots": IR_SLOTS,
             "recentDays": RECENT_DAYS, "recentWeight": RECENT_WEIGHT,
             "priorGames": PRIOR_GAMES, "goaliePriorStarts": GOALIE_PRIOR_STARTS,
             "repl": {k: round(v, 3) for k, v in repl.items()},
