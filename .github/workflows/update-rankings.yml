@@ -11,6 +11,7 @@ on:
     branches: [main]
     paths:
       - "fantasy_fp_rankings.py"
+      - "my_league.json"
       - ".github/workflows/update-rankings.yml"
 
 permissions:

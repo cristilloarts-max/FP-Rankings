@@ -1,0 +1,29 @@
+{
+  "positions": {
+    "Nathan MacKinnon": "C",
+    "Fraser Minten": "C",
+    "Tomas Hertl": "C,LW",
+    "Kyle Connor": "LW",
+    "Wyatt Johnston": "C,RW",
+    "Jack Quinn": "RW",
+    "Vladislav Gavrikov": "D",
+    "Lane Hutson": "D",
+    "Thomas Harley": "D",
+    "Rasmus Dahlin": "D",
+    "Andrei Svechnikov": "LW,RW",
+    "Alexis Lafreniere": "LW,RW",
+    "Devon Toews": "D",
+    "Luke Evangelista": "LW,RW",
+    "John Marino": "D",
+    "Ivan Demidov": "RW"
+  },
+  "myTeam": {
+    "roster": [
+      "Nathan MacKinnon", "Fraser Minten", "Tomas Hertl", "Kyle Connor", "Wyatt Johnston", "Jack Quinn",
+      "Vladislav Gavrikov", "Lane Hutson", "Thomas Harley", "Rasmus Dahlin", "Andrei Svechnikov",
+      "Alexis Lafreniere", "Devon Toews", "Luke Evangelista",
+      "Joel Hofer", "Dylan Garand"
+    ],
+    "ir": ["John Marino", "Ivan Demidov", "Devon Levi"]
+  }
+}

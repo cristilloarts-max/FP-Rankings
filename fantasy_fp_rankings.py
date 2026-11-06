@@ -70,6 +70,9 @@ BENCH_SLOTS = 4
 IR_SLOTS = 3
 SKATERS_ROSTERED_PER_TEAM = 14   # starters + bench skaters (used to guess who's a free agent)
 
+# Yahoo positions and your roster live in this file next to the script (optional).
+LEAGUE_FILE = "my_league.json"
+
 # Fantasy playoff window. Leave as None to use the last 3 weeks of the NHL regular season,
 # or set real dates like "2027-03-15" / "2027-04-04".
 PLAYOFF_START = None
@@ -651,6 +654,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   :root{
     --ice:#F2F6F9; --surface:#FFFFFF; --ink:#0F1E33; --muted:#5D6D83; --faint:#93A1B4; --line:#DCE4EC;
     --blue:#1F5FD1; --blue-soft:#E3ECFB; --red:#D7263D; --red-soft:#FBE6E9; --gold:#E0A100;
+    --pC:#1E6FD0; --pW:#11866A; --pD:#9A7000; --pG:#5B8A0E;
     --heat0:#E9EEF3; --heat1:#D6E2F4; --heat2:#A9C3EE; --heat3:#5F8FE0; --heat4:#1F5FD1;
     --shadow:0 18px 40px rgba(15,30,51,.18);
     --display:"Big Shoulders Display","Big Shoulders","Barlow Condensed","Arial Narrow",sans-serif;
@@ -660,6 +664,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     :root{
       --ice:#0C1626; --surface:#13213A; --ink:#E9F0F8; --muted:#97A6BC; --faint:#64748B; --line:#22324D;
       --blue:#5B8EF0; --blue-soft:#1A2D52; --red:#F0525F; --red-soft:#3A1C27; --gold:#F2BE3A;
+      --pC:#5AA7F0; --pW:#4CC7A3; --pD:#E0B43A; --pG:#A8CF3F;
       --heat0:#16243D; --heat1:#1B3159; --heat2:#25467F; --heat3:#3767BE; --heat4:#5B8EF0;
       --shadow:0 18px 40px rgba(0,0,0,.5);
     }
@@ -902,6 +907,18 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .why{font-size:14px;margin:10px 0 0;color:var(--ink)}
   .mact{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
   .mact .btn{padding:8px 12px;font-size:13px}
+  /* Yahoo-style position colours */
+  .ps{font-weight:700;font-size:12px;letter-spacing:.01em}
+  .ps i{font-style:normal}
+  .ps .C{color:var(--pC)} .ps .LW,.ps .RW{color:var(--pW)} .ps .D{color:var(--pD)} .ps .G{color:var(--pG)}
+  .slot{background:none !important;border:2px solid var(--line);border-radius:999px;color:var(--muted)}
+  .slot.s-C{border-color:var(--pC);color:var(--pC)} .slot.s-LW,.slot.s-RW{border-color:var(--pW);color:var(--pW)}
+  .slot.s-D{border-color:var(--pD);color:var(--pD)} .slot.s-G{border-color:var(--pG);color:var(--pG)}
+  .slot.s-Util{border-color:var(--ink);color:var(--ink)}
+  .empty-slot .slot{border-style:dashed}
+  .chip.pc-C[aria-pressed="true"]{background:var(--pC);border-color:var(--pC);color:#fff}
+  .chip.pc-LW[aria-pressed="true"],.chip.pc-RW[aria-pressed="true"]{background:var(--pW);border-color:var(--pW);color:#fff}
+  .chip.pc-D[aria-pressed="true"]{background:var(--pD);border-color:var(--pD);color:#fff}
   [hidden]{display:none !important}
 
   @media (min-width:900px){
@@ -981,7 +998,10 @@ function toast(msg) {
 }
 document.getElementById("upd").textContent = "Updated " + D.generated.replace(/, \d{4}/, ",").replace(/^(\w+) 0/, "$1 ").replace(/ 0(\d:)/, " $1");
 
-const meta = p => `<span class="meta"><span class="tm">${esc(p.team)}</span>${p.pos}</span>`;
+let elig = store.get("elig", {});
+const eligOf = p => isG(p) ? ["G"] : (elig[p.id] && elig[p.id].length ? elig[p.id] : (p.elig && p.elig.length ? p.elig : [p.pos]));
+const posTags = p => `<span class="ps">${eligOf(p).map(x => `<i class="${x}">${x}</i>`).join(",")}</span>`;
+const meta = p => `<span class="meta"><span class="tm">${esc(p.team)}</span>${posTags(p)}</span>`;
 const maxSplit = Math.max(0.01, ...SK.filter(p => p.q).map(p => Math.max(0, p.fpgS) + Math.max(0, p.fpgP)));
 const split = p => isG(p) ? "" : `<div class="split" aria-hidden="true"><div class="s" style="width:${Math.max(0, p.fpgS) / maxSplit * 100}%"></div><div class="p" style="width:${Math.max(0, p.fpgP) / maxSplit * 100}%"></div></div>`;
 function row(p, value, sub, rank, extra = "") {
@@ -1072,14 +1092,14 @@ function sheetHTML(p) {
     body += `<div class="note">Scoring on ${f1(p.sh)}% of his shots, well above his normal ${f1(p.shBase)}%. Goals will probably slow down, so this is a good time to sell.</div>`;
   if (!g && !nz(p.shDiff) && p.shDiff <= -4)
     body += `<div class="note cool">Scoring on only ${f1(p.sh)}% of his shots, below his normal ${f1(p.shBase)}%. If the shots keep coming, goals should follow.</div>`;
-  const rk = g ? (p.projRank ? `ranked #${p.projRank}` : "") : (p.posRank ? `ranked #${p.posRank}` : "");
+  const rk = g ? (p.projRank ? `#${p.projRank} goalie` : "") : (p.posRank ? `#${p.posRank} ${p.pos}` : "");
   return `<div class="grab"></div><button class="close" data-act="close" aria-label="Close">✕</button>
     <h2 id="sheetName">${esc(p.name)}</h2>
-    <div class="meta" style="font-size:13px"><span class="tm">${esc(p.team)}</span>${p.pos}${rk ? `, ${rk}` : ""}</div>
+    <div class="meta" style="font-size:13px"><span class="tm">${esc(p.team)}</span>${posTags(p)}${rk ? `<span>${rk}</span>` : ""}</div>
     ${body}
-    ${onTeam(p.id) && !g ? `<div class="kv"><div style="display:block"><span>Yahoo positions</span>
-      <div class="chips" style="margin-top:8px">${["C", "LW", "RW", "D"].map(x => `<button class="chip" data-act="elig" data-id="${p.id}" data-pos="${x}" aria-pressed="${eligOf(p).includes(x)}">${x}</button>`).join("")}</div>
-      <span style="font-size:12px">Tap every position he qualifies for in Yahoo. The lineup uses this.</span></div></div>` : ""}
+    ${!g ? `<div class="kv"><div style="display:block"><span>Yahoo positions</span>
+      <div class="chips" style="margin-top:8px">${["C", "LW", "RW", "D"].map(x => `<button class="chip pc-${x}" data-act="elig" data-id="${p.id}" data-pos="${x}" aria-pressed="${eligOf(p).includes(x)}">${x}</button>`).join("")}</div>
+      <span style="font-size:12px">${elig[p.id] ? "Changed on this device." : p.elig ? "From your league file." : "From his NHL position."} Tap to match Yahoo if it's different.</span></div></div>` : ""}
     <div class="actions">
       <button class="btn primary" data-act="compare" data-id="${p.id}">Compare</button>
       <button class="btn" data-act="give" data-id="${p.id}">Trade away</button>
@@ -1193,7 +1213,7 @@ function rankListHTML() {
   const sortKey = rs.sort[rs.view];
   const q = rs.q.trim().toLowerCase();
   const pool = (isSk ? SK : GO).filter(p => p.q
-    && (!isSk || rs.pos === "ALL" || p.pos === rs.pos || (rs.pos === "F" && ["C", "LW", "RW"].includes(p.pos)))
+    && (!isSk || rs.pos === "ALL" || eligOf(p).includes(rs.pos) || (rs.pos === "F" && eligOf(p).some(x => x !== "D")))
     && (!q || p.name.toLowerCase().includes(q) || p.team.toLowerCase() === q))
     .sort((a, b) => (nz(b[sortKey]) ? -1e9 : b[sortKey]) - (nz(a[sortKey]) ? -1e9 : a[sortKey]));
   return listHTML(pool.slice(0, rs.shown), (p, i) => { const [v, s] = rankVal(p, sortKey); return row(p, v, s, i + 1, isSk ? split(p) : ""); }, "No players match that search.")
@@ -1439,9 +1459,16 @@ function renderTrade() {
 }
 
 // ---------- MY TEAM ----------
-let team = store.get("team", []).filter(id => P.has(id));
-let irSet = new Set(store.get("ir", []).filter(id => P.has(id)));
-let elig = store.get("elig", {});
+let team, irSet;
+const fileTeam = D.myTeam || { roster: [], ir: [], version: "" };
+if (fileTeam.version && store.get("teamFrom", "") !== fileTeam.version) {
+  team = fileTeam.roster.filter(id => P.has(id));
+  irSet = new Set(fileTeam.ir.filter(id => P.has(id)));
+  store.set("teamFrom", fileTeam.version); store.set("team", team); store.set("ir", [...irSet]);
+} else {
+  team = store.get("team", []).filter(id => P.has(id));
+  irSet = new Set(store.get("ir", []).filter(id => P.has(id)));
+}
 let taken = new Set(store.get("taken", []));
 const saveTeam = () => { store.set("team", team); store.set("ir", [...irSet]); store.set("elig", elig); store.set("taken", [...taken]); };
 const onTeam = id => team.includes(id);
@@ -1467,13 +1494,13 @@ function toggleIR(id) {
   else { irSet.add(id); toast(`Moved ${p.name} to IR`); }
   saveTeam(); renderTeam();
 }
-const eligOf = p => isG(p) ? ["G"] : (elig[p.id] && elig[p.id].length ? elig[p.id] : [p.pos]);
 function toggleElig(id, pos) {
   const p = P.get(id); if (!p || isG(p)) return;
   let e = eligOf(p).slice();
   e = e.includes(pos) ? e.filter(x => x !== pos) : [...e, pos];
   if (!e.length) e = [p.pos];
-  elig[id] = e; saveTeam(); renderTeam();
+  elig[id] = e; saveTeam();
+  renderWeek(); renderTeam(); renderRank(); renderCompare(); renderTrade();
 }
 
 const SLOTS = [];
@@ -1607,7 +1634,7 @@ function seasonMoves(L) {
   const drops = roster.slice().sort((a, b) => (a.rosVor || 0) - (b.rosVor || 0)).slice(0, 6);
   const used = new Set(), out = [];
   for (const d of drops) {
-    const pool = (isG(d) ? GO : SK).filter(c => isAvail(c) && !used.has(c.id) && (isG(d) || benchIds.has(d.id) || eligOf(d).includes(c.pos)));
+    const pool = (isG(d) ? GO : SK).filter(c => isAvail(c) && !used.has(c.id) && (isG(d) || benchIds.has(d.id) || eligOf(c).some(x => eligOf(d).includes(x))));
     const c = pool.sort((a, b) => b.rosFp - a.rosFp)[0];
     if (!c) continue;
     const gain = c.rosFp - d.rosFp;
@@ -1630,7 +1657,7 @@ function weekMoves(L) {
   const droppable = byVor.slice(0, Math.max(2, Math.ceil(roster.length / 3))).sort((a, b) => (a[k] || 0) - (b[k] || 0));
   const used = new Set(), out = [];
   for (const d of droppable) {
-    const pool = (isG(d) ? GO : SK).filter(c => isAvail(c) && !used.has(c.id) && (isG(d) || benchIds.has(d.id) || eligOf(d).includes(c.pos)));
+    const pool = (isG(d) ? GO : SK).filter(c => isAvail(c) && !used.has(c.id) && (isG(d) || benchIds.has(d.id) || eligOf(c).some(x => eligOf(d).includes(x))));
     const c = pool.sort((a, b) => (b[k] || 0) - (a[k] || 0))[0];
     if (!c) continue;
     const gain = (c[k] || 0) - (d[k] || 0);
@@ -1655,10 +1682,10 @@ function moveCard(m) {
 }
 
 function slotRow(label, p) {
-  if (!p) return `<div class="row slotrow empty-slot"><span class="slot">${label}</span><span class="who"><b class="muted">Empty</b><span class="meta">Add a ${label === "Util" ? "skater" : label} below</span></span></div>`;
+  if (!p) return `<div class="row slotrow empty-slot"><span class="slot s-${label}">${label}</span><span class="who"><b class="muted">Empty</b><span class="meta">Add a ${label === "Util" ? "skater" : label} below</span></span></div>`;
   const s = `${f2(projTG(p))}`;
-  return `<button class="row slotrow" data-pid="${p.id}"><span class="slot">${label}</span>
-    <span class="who"><b>${esc(p.name)}</b><span class="meta"><span class="tm">${esc(p.team)}</span>${eligOf(p).join("/")}</span></span>
+  return `<button class="row slotrow" data-pid="${p.id}"><span class="slot s-${label}">${label}</span>
+    <span class="who"><b>${esc(p.name)}</b>${meta(p)}</span>
     <span class="val"><b>${s}</b><small>${nz(p[gKey()]) ? "" : plural(p[gKey()], "game") + (nxtFocus() ? " next wk" : " left")}</small></span></button>`;
 }
 
@@ -1699,7 +1726,7 @@ function renderTeam() {
       ${taken.size ? `<button class="more" data-untake>Show hidden players again (${taken.size})</button>` : ""}`;
   }
   el.innerHTML = `<h1>My team</h1>
-    <p class="intro">${team.length ? `${plural(team.length - L.ir.length, "active player")} of ${ROSTER_MAX}${L.ir.length ? `, ${L.ir.length} on IR` : ""}.` : "Build your roster to get a lineup, a report card and moves to make."}</p>
+    <p class="intro">${team.length ? `${plural(team.length - L.ir.length, "active player")} of ${ROSTER_MAX}${L.ir.length ? `, ${L.ir.length} on IR` : ""}.${fileTeam.version ? " Loaded from your league file. After a trade or pickup, add or remove players here, or ask Claude to update the file." : ""}` : "Build your roster to get a lineup, a report card and moves to make."}</p>
     ${team.length ? tabs : ""}
     <div id="tPick" style="margin-top:14px"></div>
     ${body}`;
@@ -1749,7 +1776,7 @@ function renderGuide() {
       <p>As the season goes on, this season's numbers take over. Goalies work the same way per start (last season counts as ${C.goaliePriorStarts} starts), then get multiplied by their share of starts.</p>`)}
     ${sec("What it can't see yet", `<ul>
       <li>Injuries, line changes and confirmed starting goalies. Check Yahoo or Daily Faceoff before you set your lineup.</li>
-      <li>Yahoo positions. It uses NHL positions, and some players qualify at two spots on Yahoo.</li>
+      <li>Yahoo positions for every player. Your roster's positions come from your league file. For anyone else it uses his NHL position, and you can fix it on his player card.</li>
       <li>Your league's rosters. Pickups and suggested moves assume players ranked outside the top ${C.leagueTeams * C.rosteredPerTeam} are available. Mark anyone who isn't, and the app will skip him.</li>
       <li>Your phone and computer keep separate copies of My team, Compare and Trade.</li>
       ${C.hasLast ? "" : "<li>Last season's stats didn't load on today's update, so projections use this season only.</li>"}
@@ -1773,13 +1800,70 @@ go(VIEWS.includes(saved) ? saved : "week");
 # ===========================================================================
 # MAIN
 # ===========================================================================
-def build(raw, season_id, min_gp, out_dir, today=None, open_browser=True):
+def norm_name(name):
+    import re
+    import unicodedata
+    s = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z]", "", s.lower())
+
+
+def load_league_file(path=None):
+    """my_league.json: Yahoo positions and your roster. Optional - the app works without it."""
+    path = path or os.path.join(os.path.dirname(os.path.abspath(__file__)), LEAGUE_FILE)
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        log(f"  {LEAGUE_FILE}: couldn't read it ({e}), skipping")
+        return {}
+
+
+def apply_league_file(league, skaters, goalies):
+    by_name = {}
+    for p in sorted(skaters + goalies, key=lambda x: x["gp"]):
+        by_name[norm_name(p["name"])] = p   # most games wins if two players share a name
+    valid = {"C", "LW", "RW", "D"}
+    set_count = 0
+    for name, pos in (league.get("positions") or {}).items():
+        p = by_name.get(norm_name(name))
+        pos = [x.strip().upper() for x in (pos if isinstance(pos, list) else str(pos).split(","))]
+        pos = [x for x in pos if x in valid]
+        if p and p["pos"] != "G" and pos:
+            p["elig"] = pos
+            set_count += 1
+        elif not p:
+            log(f"  {LEAGUE_FILE}: no current player named '{name}' (positions)")
+    team = league.get("myTeam") or {}
+    roster, ir = [], []
+    for key, out in (("roster", roster), ("ir", ir)):
+        for name in team.get(key, []) or []:
+            p = by_name.get(norm_name(name))
+            if p:
+                out.append(p["id"])
+            else:
+                log(f"  {LEAGUE_FILE}: no current player named '{name}' (myTeam.{key})")
+    for pid in ir:
+        if pid not in roster:
+            roster.append(pid)
+    version = ""
+    if roster:
+        import hashlib
+        version = hashlib.sha1(json.dumps([roster, ir]).encode()).hexdigest()[:10]
+    if league:
+        log(f"  {LEAGUE_FILE}: Yahoo positions for {set_count} players, roster of {len(roster)} ({len(ir)} on IR)")
+    return {"roster": roster, "ir": ir, "version": version}
+
+
+def build(raw, season_id, min_gp, out_dir, today=None, open_browser=True, league=None):
     today = today or local_now().date()
     teams, week = analyze_schedule(raw.get("schedules", {}), today)
     skaters, repl = build_skaters(raw, teams, min_gp)
     goalies, repl_g = build_goalies(raw, teams, min_gp)
     repl["G"] = repl_g
     pulse = build_pulse(skaters, goalies, week)
+    my_team = apply_league_file(load_league_file() if league is None else league, skaters, goalies)
 
     os.makedirs(out_dir, exist_ok=True)
     write_csv(os.path.join(out_dir, "skaters.csv"), skaters, SKATER_CSV_COLS, "proj")
@@ -1792,6 +1876,7 @@ def build(raw, season_id, min_gp, out_dir, today=None, open_browser=True):
         "week": week,
         "teams": teams,
         "pulse": pulse,
+        "myTeam": my_team,
         "config": {
             "skaterScoring": [[LEAGUE_LABELS[k], v] for k, v in SKATER_SCORING.items()],
             "goalieScoring": [[LEAGUE_LABELS[k], v] for k, v in GOALIE_SCORING.items()],
