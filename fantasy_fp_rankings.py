@@ -64,6 +64,14 @@ GOALIE_SCORING = {
     "shutouts": 4.0,
 }
 
+# Categories mode (the Points / Cats switch in the app). Every category counts the same.
+# Lower-is-better categories (FL, L, GA, GAA) are handled automatically.
+SKATER_CATS = ["goals", "assists", "plusMinus", "penaltyMinutes", "ppGoals", "ppAssists", "shGoals",
+               "shAssists", "gameWinningGoals", "shots", "shootingPct", "faceoffWins", "faceoffLosses",
+               "hits", "blockedShots"]
+GOALIE_CATS = ["gamesStarted", "wins", "losses", "goalsAgainst", "gaa", "saves", "shotsAgainst",
+               "savePct", "shutouts"]
+
 LEAGUE_TEAMS = 12                                         # teams in your league
 ROSTER_SLOTS = {"C": 2, "LW": 2, "RW": 2, "D": 4, "Util": 1, "G": 2}  # starting slots per team
 BENCH_SLOTS = 4
@@ -94,6 +102,16 @@ LEAGUE_LABELS = {
     "shots": "SOG", "hits": "HIT", "blockedShots": "BLK",
     "wins": "W", "goalsAgainst": "GA", "saves": "SV", "shutouts": "SHO",
 }
+CAT_LABELS = {
+    "goals": "G", "assists": "A", "plusMinus": "+/-", "penaltyMinutes": "PIM", "ppGoals": "PPG",
+    "ppAssists": "PPA", "shGoals": "SHG", "shAssists": "SHA", "gameWinningGoals": "GWG", "shots": "SOG",
+    "shootingPct": "SH%", "faceoffWins": "FW", "faceoffLosses": "FL", "hits": "HIT", "blockedShots": "BLK",
+    "gamesStarted": "GS", "wins": "W", "losses": "L", "goalsAgainst": "GA", "gaa": "GAA", "saves": "SV",
+    "shotsAgainst": "SA", "savePct": "SV%", "shutouts": "SHO",
+}
+CAT_SCORING = {"goals", "assists", "plusMinus", "ppGoals", "ppAssists", "shGoals", "shAssists",
+               "gameWinningGoals", "shootingPct"}   # the rest are "peripheral" (shots, hits, PIM, faceoffs...)
+MAX_TEAMS = 3
 
 # ===========================================================================
 # NHL APIs
@@ -226,17 +244,20 @@ def fetch_all(season_id, today):
     log(f"  skater hits/blocks: {len(raw['realtime'])} rows")
     raw["goalies"] = fetch_report("goalie/summary", season_exp(season_id), "wins")
     log(f"  goalie summary: {len(raw['goalies'])} rows")
+    raw["faceoffs"] = optional("skater faceoffs", fetch_report, "skater/faceoffwins", season_exp(season_id), "totalFaceoffWins")
 
     prev = prev_season_id(season_id)
     log(f"Fetching last season ({season_label(prev)}) for projections...")
     raw["lastSummary"] = optional("last season skaters", fetch_report, "skater/summary", season_exp(prev), "points")
     raw["lastRealtime"] = optional("last season hits/blocks", fetch_report, "skater/realtime", season_exp(prev), "hits")
+    raw["lastFaceoffs"] = optional("last season faceoffs", fetch_report, "skater/faceoffwins", season_exp(prev), "totalFaceoffWins")
     raw["lastGoalies"] = optional("last season goalies", fetch_report, "goalie/summary", season_exp(prev), "wins")
 
     start = today - datetime.timedelta(days=RECENT_DAYS - 1)
     log(f"Fetching last {RECENT_DAYS} days ({start} to {today})...")
     raw["recentSummary"] = optional("recent skaters", fetch_range, "skater/summary", season_id, start, today, "points")
     raw["recentRealtime"] = optional("recent hits/blocks", fetch_range, "skater/realtime", season_id, start, today, "hits")
+    raw["recentFaceoffs"] = optional("recent faceoffs", fetch_range, "skater/faceoffwins", season_id, start, today, "totalFaceoffWins")
     raw["recentGoalies"] = optional("recent goalies", fetch_range, "goalie/summary", season_id, start, today, "wins")
 
     teams = set()
@@ -258,11 +279,12 @@ def num(value):
 
 
 POS_NAMES = {"C": "C", "L": "LW", "R": "RW", "D": "D", "G": "G"}
-SUMMARY_FIELDS = ["gamesPlayed", "goals", "assists", "points", "plusMinus",
-                  "ppPoints", "shGoals", "shPoints", "gameWinningGoals", "shots"]
+SUMMARY_FIELDS = ["gamesPlayed", "goals", "assists", "points", "plusMinus", "penaltyMinutes",
+                  "ppGoals", "ppPoints", "shGoals", "shPoints", "gameWinningGoals", "shots"]
 REALTIME_FIELDS = ["hits", "blockedShots"]
+FACEOFF_FIELDS = ["totalFaceoffWins", "totalFaceoffLosses"]
 GOALIE_FIELDS = ["gamesPlayed", "gamesStarted", "wins", "losses", "otLosses",
-                 "goalsAgainst", "saves", "shotsAgainst", "shutouts"]
+                 "goalsAgainst", "saves", "shotsAgainst", "shutouts", "timeOnIce"]
 
 
 def add_teams(player, team_str):
@@ -272,7 +294,7 @@ def add_teams(player, team_str):
             player["teamList"].append(t)
 
 
-def merge_skaters(summary_rows, realtime_rows):
+def merge_skaters(summary_rows, realtime_rows, faceoff_rows=()):
     """Sum rows by player (handles trades and per-game rows)."""
     players = {}
     for r in summary_rows:
@@ -284,18 +306,20 @@ def merge_skaters(summary_rows, realtime_rows):
             "name": r.get("skaterFullName") or r.get("lastName") or "Unknown",
             "pos": POS_NAMES.get(r.get("positionCode", ""), r.get("positionCode", "")),
             "teamList": [],
-            **{f: 0.0 for f in SUMMARY_FIELDS + REALTIME_FIELDS},
+            **{f: 0.0 for f in SUMMARY_FIELDS + REALTIME_FIELDS + FACEOFF_FIELDS},
         })
         for f in SUMMARY_FIELDS:
             p[f] += num(r.get(f))
         add_teams(p, r.get("teamAbbrevs") or r.get("teamAbbrev"))
-    for r in realtime_rows:
-        p = players.get(r.get("playerId"))
-        if p:
-            for f in REALTIME_FIELDS:
-                p[f] += num(r.get(f))
+    for rows, fields in ((realtime_rows, REALTIME_FIELDS), (faceoff_rows, FACEOFF_FIELDS)):
+        for r in rows or []:
+            p = players.get(r.get("playerId"))
+            if p:
+                for f in fields:
+                    p[f] += num(r.get(f))
     for p in players.values():
         p["shAssists"] = max(0.0, p["shPoints"] - p["shGoals"])
+        p["ppAssists"] = max(0.0, p["ppPoints"] - p["ppGoals"])
     return players
 
 
@@ -330,6 +354,103 @@ def goalie_fp(g):
 
 def div(a, b):
     return a / b if b else 0.0
+
+
+# ---------------------------------------------------------------------------
+# Categories: each category becomes a per-stat weight of 1 / (spread among rostered
+# players), so one "typical difference" in any category is worth the same. That turns
+# categories into a points-like number ("cat points") the whole app can project and sum.
+# ---------------------------------------------------------------------------
+def skater_cat_amounts(p, m):
+    """Each category as a 'good is positive' amount that adds up over games."""
+    g = lambda k: p.get(k, 0.0) or 0.0
+    return {
+        "goals": g("goals"), "assists": g("assists"), "plusMinus": g("plusMinus"),
+        "penaltyMinutes": g("penaltyMinutes"), "ppGoals": g("ppGoals"), "ppAssists": g("ppAssists"),
+        "shGoals": g("shGoals"), "shAssists": g("shAssists"), "gameWinningGoals": g("gameWinningGoals"),
+        "shots": g("shots"),
+        "shootingPct": g("goals") - m["sh"] * g("shots"),          # goals above an average shooter
+        "faceoffWins": g("totalFaceoffWins"), "faceoffLosses": -g("totalFaceoffLosses"),
+        "hits": g("hits"), "blockedShots": g("blockedShots"),
+    }
+
+
+def goalie_cat_amounts(p, m):
+    g = lambda k: p.get(k, 0.0) or 0.0
+    toi = g("timeOnIce") or g("gamesPlayed") * 3600
+    return {
+        "gamesStarted": g("gamesStarted"), "wins": g("wins"), "losses": -(g("losses") + g("otLosses")),
+        "goalsAgainst": -g("goalsAgainst"),
+        "gaa": m["gaa"] * toi / 3600 - g("goalsAgainst"),           # goals saved vs an average GAA
+        "saves": g("saves"), "shotsAgainst": g("shotsAgainst"),
+        "savePct": g("saves") - m["sv"] * g("shotsAgainst"),        # saves above an average SV%
+        "shutouts": g("shutouts"),
+    }
+
+
+def build_cat_model(raw, skaters_fp, goalies_fp):
+    """Weights per category from the players a league like yours actually rosters."""
+    cur = merge_skaters(raw["summary"], raw["realtime"], raw.get("faceoffs", []))
+    pool = sorted([p for p in skaters_fp if p["q"]], key=lambda p: -p["proj"])[:LEAGUE_TEAMS * SKATERS_ROSTERED_PER_TEAM]
+    lines = [cur[p["id"]] for p in pool if p["id"] in cur and cur[p["id"]]["gamesPlayed"] > 0]
+    m_sk = {"sh": div(sum(l["goals"] for l in lines), sum(l["shots"] for l in lines)) or 0.1}
+    rates = [{k: v / l["gamesPlayed"] for k, v in skater_cat_amounts(l, m_sk).items()} for l in lines]
+    sk_mean, sk_sd, w_sk = {}, {}, {}
+    for k in SKATER_CATS:
+        vals = [r[k] for r in rates]
+        sk_mean[k] = statistics.mean(vals) if vals else 0.0
+        sk_sd[k] = statistics.pstdev(vals) if len(vals) > 1 else 0.0
+        w_sk[k] = div(1.0, sk_sd[k])
+    # Put cat points on the same scale as fantasy points, so the app's thresholds still make sense
+    raw_mean = statistics.mean([sum(w_sk[k] * r[k] for k in SKATER_CATS) for r in rates]) if rates else 0.0
+    fp_mean = statistics.mean([p["fpg"] for p in pool]) if pool else 1.0
+    scale = div(fp_mean, raw_mean) if raw_mean > 0 else 1.0
+    w_sk = {k: v * scale for k, v in w_sk.items()}
+
+    gcur = merge_goalies(raw["goalies"])
+    gpool = sorted([g for g in goalies_fp if g["q"]], key=lambda g: -g["projTG"])[:LEAGUE_TEAMS * (ROSTER_SLOTS.get("G", 2) + 1)]
+    share = {g["id"]: g["share"] for g in gpool}
+    glines = [gcur[g["id"]] for g in gpool if g["id"] in gcur and gcur[g["id"]]["gamesStarted"] > 0]
+    toi = sum((l["timeOnIce"] or l["gamesPlayed"] * 3600) for l in glines)
+    m_g = {"gaa": div(sum(l["goalsAgainst"] for l in glines) * 3600, toi) or 2.9,
+           "sv": div(sum(l["saves"] for l in glines), sum(l["shotsAgainst"] for l in glines)) or 0.9}
+    # Goalie categories are rated per team game (starts x how often he starts)
+    grates = [{k: v / l["gamesStarted"] * share[l["playerId"]] for k, v in goalie_cat_amounts(l, m_g).items()} for l in glines]
+    # Two goalies carry 9 categories while 11 skaters share theirs, so one goalie moves a category more
+    sk_slots = sum(v for k, v in ROSTER_SLOTS.items() if k != "G")
+    g_boost = (sk_slots / max(1, ROSTER_SLOTS.get("G", 2))) ** 0.5
+    g_mean, g_sd, w_g = {}, {}, {}
+    for k in GOALIE_CATS:
+        vals = [r[k] for r in grates]
+        g_mean[k] = statistics.mean(vals) if vals else 0.0
+        g_sd[k] = statistics.pstdev(vals) if len(vals) > 1 else 0.0
+        w_g[k] = div(1.0, g_sd[k]) * g_boost * scale
+
+    def sk_fn(p):
+        a = skater_cat_amounts(p, m_sk)
+        s = sum(w_sk[k] * a[k] for k in SKATER_CATS if k in CAT_SCORING)
+        pe = sum(w_sk[k] * a[k] for k in SKATER_CATS if k not in CAT_SCORING)
+        return s, pe
+
+    def g_fn(p):
+        a = goalie_cat_amounts(p, m_g)
+        return sum(w_g[k] * a[k] for k in GOALIE_CATS)
+
+    def sk_z(p):
+        """How far above or below a typical rostered skater he is in each category, per game."""
+        gp = p.get("gamesPlayed") or 0
+        a = skater_cat_amounts(p, m_sk)
+        return [round(div(a[k] / gp - sk_mean[k], sk_sd[k]), 1) if gp else None for k in SKATER_CATS]
+
+    def g_z(p, sh):
+        gs = p.get("gamesStarted") or 0
+        a = goalie_cat_amounts(p, m_g)
+        return [round(div(a[k] / gs * sh - g_mean[k], g_sd[k]), 1) if gs else None for k in GOALIE_CATS]
+
+    fo = sum(l["totalFaceoffWins"] for l in lines)
+    log(f"  categories: {len(lines)} skaters and {len(glines)} goalies set the weights"
+        f" (faceoffs {'found' if fo else 'missing, so FW/FL count as zero'})")
+    return {"sk_fn": sk_fn, "g_fn": g_fn, "sk_z": sk_z, "g_z": g_z, "cur": cur, "gcur": gcur}
 
 
 # ===========================================================================
@@ -402,10 +523,11 @@ def rank(items, key, out_field, reverse=True):
         item[out_field] = i
 
 
-def build_skaters(raw, teams, min_gp):
-    cur = merge_skaters(raw["summary"], raw["realtime"])
-    last = merge_skaters(raw.get("lastSummary", []), raw.get("lastRealtime", []))
-    rec = merge_skaters(raw.get("recentSummary", []), raw.get("recentRealtime", []))
+def build_skaters(raw, teams, min_gp, fp_fn=None):
+    skater_fp_ = fp_fn or skater_fp
+    cur = merge_skaters(raw["summary"], raw["realtime"], raw.get("faceoffs", []))
+    last = merge_skaters(raw.get("lastSummary", []), raw.get("lastRealtime", []), raw.get("lastFaceoffs", []))
+    rec = merge_skaters(raw.get("recentSummary", []), raw.get("recentRealtime", []), raw.get("recentFaceoffs", []))
 
     # League shooting % by forwards / defence, used when there's no history
     sh_league = {}
@@ -418,7 +540,7 @@ def build_skaters(raw, teams, min_gp):
         gp = p["gamesPlayed"]
         if gp <= 0:
             continue
-        s, pe = skater_fp(p)
+        s, pe = skater_fp_(p)
         team_now = current_team(rec.get(pid), p)
         out = {
             "id": pid, "name": p["name"], "team": team_now, "teams": "/".join(p["teamList"]), "pos": p["pos"],
@@ -439,13 +561,13 @@ def build_skaters(raw, teams, min_gp):
         out["shDiff"] = (out["sh"] - out["shBase"]) if p["shots"] >= 30 else None
         # Last season + recent form
         if lp and lp["gamesPlayed"] > 0:
-            ls, lpe = skater_fp(lp)
+            ls, lpe = skater_fp_(lp)
             out["lastGp"], out["lastFpg"] = lp["gamesPlayed"], div(ls + lpe, lp["gamesPlayed"])
         else:
             out["lastGp"], out["lastFpg"] = 0, None
         rp = rec.get(pid)
         if rp and rp["gamesPlayed"] > 0:
-            rs, rpe = skater_fp(rp)
+            rs, rpe = skater_fp_(rp)
             out["recGp"], out["recFpg"] = rp["gamesPlayed"], div(rs + rpe, rp["gamesPlayed"])
         else:
             out["recGp"], out["recFpg"] = 0, None
@@ -506,7 +628,8 @@ def build_skaters(raw, teams, min_gp):
     return players, repl
 
 
-def build_goalies(raw, teams, min_gp):
+def build_goalies(raw, teams, min_gp, fp_fn=None):
+    goalie_fp = fp_fn or globals()["goalie_fp"]
     cur = merge_goalies(raw["goalies"])
     last = merge_goalies(raw.get("lastGoalies", []))
     rec = merge_goalies(raw.get("recentGoalies", []))
@@ -526,7 +649,7 @@ def build_goalies(raw, teams, min_gp):
             continue
         fp = goalie_fp(g)
         team_now = current_team(rec.get(pid), g)
-        noWin = g["saves"] * GOALIE_SCORING["saves"] + g["goalsAgainst"] * GOALIE_SCORING["goalsAgainst"]
+        noWin = goalie_fp({**g, "wins": 0.0, "shutouts": 0.0})
         out = {
             "id": pid, "name": g["name"], "team": team_now, "teams": "/".join(g["teamList"]), "pos": "G",
             "gp": gp, "gs": gs, "w": g["wins"], "l": g["losses"], "otl": g["otLosses"],
@@ -957,6 +1080,23 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .note .lnk{background:none;border:0;padding:0;font-weight:700;text-decoration:underline;text-underline-offset:3px}
   .tsum em.dl{display:block;font-style:normal;font-size:12px;font-weight:700;margin-top:6px;color:var(--muted)}
   .tsum em.dl.up{color:var(--blue)} .tsum em.dl.down{color:var(--red)}
+  /* team switcher + points/cats */
+  .ctx{display:flex;align-items:center;gap:10px;max-width:760px;margin:0 auto;padding:4px 18px 8px}
+  .tsw{flex:1;min-width:0;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px 0}
+  .tsw::-webkit-scrollbar{display:none}
+  .tchip{flex:none;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid var(--line);
+    background:var(--surface);border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600;color:var(--muted)}
+  .tchip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--ice)}
+  .tchip.add{padding:5px 11px;color:var(--blue);font-weight:700}
+  .ctx .seg{flex:none}
+  .th{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .th h1{min-width:0;overflow-wrap:anywhere}
+  .rename{display:flex;gap:8px;align-items:center;margin:14px 0 6px;flex-wrap:wrap}
+  .rename input{flex:1;min-width:160px;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:10px 12px;font-size:16px;outline:none}
+  .rename input:focus{border-color:var(--blue)}
+  .cz{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .cz span{font-size:12.5px;font-weight:700;padding:3px 8px;border-radius:8px;background:var(--heat0);color:var(--muted)}
+  .cz .hi{background:var(--blue-soft);color:var(--blue)} .cz .lo{background:var(--red-soft);color:var(--red)}
   [hidden]{display:none !important}
 
   @media (min-width:900px){
@@ -979,6 +1119,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   <div class="brand">FP Hockey</div>
   <div class="tr"><span class="upd" id="upd"></span><button class="help" data-go="guide" aria-label="Open the guide">?</button></div>
 </header>
+<div class="ctx" id="ctx"></div>
 <nav class="tabs" aria-label="Pages">
   <button data-v="week"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>This week</button>
   <button data-v="team"><svg viewBox="0 0 24 24"><path d="M8 4l-4.5 3 2 4L7 10v10h10V10l1.5 1 2-4L16 4c-.8 1.4-2.2 2.2-4 2.2S8.8 5.4 8 4z"/></svg>My team</button>
@@ -1034,13 +1175,34 @@ function toast(msg) {
   const t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show");
   clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 1700);
 }
+// ---------- points or categories ----------
+const SK_KEYS = ["fp", "fpS", "fpP", "fpg", "fpgS", "fpgP", "peri", "lastFpg", "recFpg", "prior", "proj",
+  "rosFp", "wkFp", "nxtFp", "poFp", "vor", "rosVor", "rank", "projRank", "posRank", "gap"];
+const G_KEYS = ["fp", "fpg", "fpgs", "noWin", "lastFpgs", "recFpgs", "prior", "proj", "projTG",
+  "rosFp", "wkFp", "nxtFp", "poFp", "vor", "rosVor", "rank", "projRank"];
+let mode = "pts";
+const CAT = () => mode === "cat";
+const U = () => CAT()
+  ? { p: "cat points", P: "Cat points", fp: "CP", by: "your categories", sc: "scoring categories", peri: "shots, hits, blocks, PIM and faceoffs" }
+  : { p: "points", P: "Points", fp: "FP", by: "your league's scoring", sc: "goals and assists", peri: "shots, hits and blocks" };
+const PULSE = () => CAT() && D.pulseCat ? D.pulseCat : D.pulse;
+function applyMode(m) {
+  mode = m === "cat" ? "cat" : "pts";
+  for (const p of P.values()) {
+    const keys = isG(p) ? G_KEYS : SK_KEYS;
+    if (!p._pts) p._pts = Object.fromEntries(keys.map(k => [k, p[k]]));
+    const src = mode === "cat" && p.cat ? p.cat : p._pts;
+    keys.forEach(k => { p[k] = src[k]; });
+  }
+  refreshDerived();
+}
 document.getElementById("upd").textContent = "Updated " + D.generated.replace(/, \d{4}/, ",").replace(/^(\w+) 0/, "$1 ").replace(/ 0(\d:)/, " $1");
 
 let elig = store.get("elig", {});
 const eligOf = p => isG(p) ? ["G"] : (elig[p.id] && elig[p.id].length ? elig[p.id] : (p.elig && p.elig.length ? p.elig : [p.pos]));
 const posTags = p => `<span class="ps">${eligOf(p).map(x => `<i class="${x}">${x}</i>`).join(",")}</span>`;
 const meta = p => `<span class="meta"><span class="tm">${esc(p.team)}</span>${posTags(p)}</span>`;
-const maxSplit = Math.max(0.01, ...SK.filter(p => p.q).map(p => Math.max(0, p.fpgS) + Math.max(0, p.fpgP)));
+let maxSplit = 1;
 const split = p => isG(p) ? "" : `<div class="split" aria-hidden="true"><div class="s" style="width:${Math.max(0, p.fpgS) / maxSplit * 100}%"></div><div class="p" style="width:${Math.max(0, p.fpgP) / maxSplit * 100}%"></div></div>`;
 function row(p, value, sub, rank, extra = "") {
   return `<button class="row" data-pid="${p.id}">${rank !== undefined ? `<span class="rk">${rank}</span>` : ""}
@@ -1098,8 +1260,9 @@ function ideaHTML(p) {
   const g = x.give, r = x.get;
   const side = (q, lbl, cls) => `<button class="mside ${cls}" data-pid="${q.id}"><small>${lbl}</small><b>${esc(q.name)}</b>${meta(q)}</button>`;
   const better = (a, b) => a > b ? "up" : a < b ? "down" : "";
-  const looks = r.fpg <= g.fpg ? `On Yahoo, ${esc(r.name)}'s season (${f2(r.fpg)} a game) looks no better than ${esc(g.name)}'s (${f2(g.fpg)}), so it reads as fair or even a win for them.`
-    : `On Yahoo, ${esc(r.name)}'s season (${f2(r.fpg)} a game) is close to ${esc(g.name)}'s (${f2(g.fpg)}), so it should read as a fair swap.`;
+  const yh = CAT() ? "By season stats" : "On Yahoo";
+  const looks = r.fpg <= g.fpg ? `${yh}, ${esc(r.name)}'s season (${f2(r.fpg)} a game) looks no better than ${esc(g.name)}'s (${f2(g.fpg)}), so it reads as fair or even a win for them.`
+    : `${yh}, ${esc(r.name)}'s season (${f2(r.fpg)} a game) is close to ${esc(g.name)}'s (${f2(g.fpg)}), so it should read as a fair swap.`;
   const why = [];
   if (r.proj - r.fpg >= 0.25 && !isG(r)) why.push(`${esc(r.name)} should score more than he has so far`);
   if (g.fpg - g.proj >= 0.25 && !isG(g)) why.push(`${esc(g.name)} has been scoring above his projection`);
@@ -1107,15 +1270,15 @@ function ideaHTML(p) {
   if (!isG(g) && !nz(g.shDiff) && g.shDiff >= 5) why.push(`${esc(g.name)} is riding a hot shooting streak`);
   if ((r.ros || 0) - (g.ros || 0) >= 2) why.push(`${esc(r.name)}'s team has ${(r.ros || 0) - (g.ros || 0)} more games left`);
   if (isG(r) && r.share - g.share >= 0.08) why.push(`${esc(r.name)} starts more often (${pct(r.share * 100)} vs ${pct(g.share * 100)})`);
-  if (!isG(r) && r.peri - g.peri >= 10) why.push(`more of ${esc(r.name)}'s points come from hits, blocks and shots, which hold steady`);
+  if (!isG(r) && r.peri - g.peri >= 10) why.push(`more of ${esc(r.name)}'s ${U().p} come from ${U().peri}, which hold steady`);
   const whyTxt = why.length ? ` Your projections favour ${esc(r.name)} because ${why.slice(0, 2).join(" and ")}.` : ` Your projections say ${esc(r.name)} scores more the rest of the way.`;
   return `<div class="idea">
     <div class="ih"><b>Trade idea</b><span>+${f0(x.gain)} for you</span></div>
     <div class="swap">${side(g, "You give", "out")}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>${side(r, "You get", "in")}</div>
     <table class="dt"><thead><tr><th></th><th>${esc(g.name.split(" ").slice(-1)[0])}</th><th>${esc(r.name.split(" ").slice(-1)[0])}</th></tr></thead><tbody>
-      <tr><td>Season per game <small>(what Yahoo shows)</small></td><td>${f2(g.fpg)}</td><td>${f2(r.fpg)}</td></tr>
+      <tr><td>Season per game${CAT() ? "" : " <small>(what Yahoo shows)</small>"}</td><td>${f2(g.fpg)}</td><td>${f2(r.fpg)}</td></tr>
       <tr><td>Projected per game</td><td>${f2(projTG(g))}</td><td class="${better(projTG(r), projTG(g))}">${f2(projTG(r))}</td></tr>
-      <tr><td>Points left this season</td><td>${f0(g.rosFp)}</td><td class="${better(r.rosFp, g.rosFp)}">${f0(r.rosFp)}</td></tr>
+      <tr><td>${U().P} left this season</td><td>${f0(g.rosFp)}</td><td class="${better(r.rosFp, g.rosFp)}">${f0(r.rosFp)}</td></tr>
     </tbody></table>
     <p class="why">${looks}${whyTxt}${x.tier === "stretch" ? " His season looks a bit better, so you may need to add a small piece." : ""}</p>
     <div class="actions"><button class="btn primary" data-act="idea" data-give="${g.id}" data-get="${r.id}">Open in Trade</button><button class="btn" data-act="idea-concept" data-give="${g.id}" data-get="${r.id}">Try it</button>${ideas.length > 1 ? `<button class="btn" data-act="idea-next" data-id="${p.id}">Another idea (${ideaIdx % ideas.length + 1} of ${ideas.length})</button>` : ""}</div>
@@ -1159,6 +1322,20 @@ document.addEventListener("click", e => {
   if (r && !r.closest(".sugg")) openSheet(+r.dataset.pid);
 });
 
+// Category strengths and weaknesses, per game, against a typical rostered player
+function catProfile(p) {
+  if (!CAT() || !Array.isArray(p.cz)) return "";
+  const labels = isG(p) ? C.cats.g : C.cats.sk;
+  const xs = labels.map((l, i) => [l, p.cz[i]]).filter(([l, z]) => !nz(z) && (C.hasFaceoffs || (l !== "FW" && l !== "FL")));
+  const hi = xs.filter(([, z]) => z >= 0.5).sort((a, b) => b[1] - a[1]);
+  const lo = xs.filter(([, z]) => z <= -0.5).sort((a, b) => a[1] - b[1]);
+  const chip = ([l, z], c) => `<span class="${c}">${esc(l)} ${sgn(z, f1)}</span>`;
+  return `<div class="kv"><div style="display:block"><span>Category profile (per game, vs a typical rostered ${isG(p) ? "goalie" : "skater"})</span>
+    ${hi.length ? `<div class="cz">${hi.map(x => chip(x, "hi")).join("")}</div>` : ""}
+    ${lo.length ? `<div class="cz">${lo.map(x => chip(x, "lo")).join("")}</div>` : ""}
+    ${!hi.length && !lo.length ? `<div class="cz"><span>Close to average in every category</span></div>` : ""}</div></div>`;
+}
+
 function sheetHTML(p) {
   const g = isG(p);
   const trio = g
@@ -1168,24 +1345,26 @@ function sheetHTML(p) {
   if (!g) {
     const tot = Math.max(0, p.fpgS) + Math.max(0, p.fpgP) || 1;
     body += `<div class="kv"><div style="display:block">
-      <span>Where his points come from</span>
+      <span>Where his ${U().p} come from</span>
       <div class="bigsplit"><div class="s" style="width:${Math.max(0, p.fpgS) / tot * 100}%"></div><div class="p" style="width:${Math.max(0, p.fpgP) / tot * 100}%"></div></div>
-      <span style="font-size:13px">${pct(100 - p.peri)} goals and assists, ${pct(p.peri)} shots, hits and blocks. ${p.peri >= 40 ? "That's a steady floor." : p.peri < 20 ? "Streaky: it rides on scoring." : ""}</span></div></div>`;
+      <span style="font-size:13px">${pct(100 - p.peri)} ${U().sc}, ${pct(p.peri)} ${U().peri}. ${p.peri >= 40 ? "That's a steady floor." : p.peri < 20 ? "Streaky: it rides on scoring." : ""}</span></div></div>`;
   } else {
     body += `<div class="kv"><div><span>Starts his team's games</span><b>${pct(p.share * 100)}</b></div>
       <div><span>Record</span><b>${f0(p.w)} W, ${f0(p.l + p.otl)} L</b></div>
       <div><span>Save %</span><b>${f3(p.svPct)}</b></div>
       <div><span>Shots faced per game</span><b>${f1(p.saFor)}</b></div>
-      <div><span>Points per game even when he loses</span><b>${f2(p.noWin)}</b></div></div>`;
+      <div><span>${U().P} per game even when he loses</span><b>${f2(p.noWin)}</b></div></div>`;
   }
-  const wkLine = g ? `${f1(p.wkStarts)} starts, ${f1(p.wkFp)} FP` : `${plural(p.wk ?? 0, "game")}, ${f1(p.wkFp)} FP`;
-  const nxLine = g ? `${f1(p.nxtStarts)} starts, ${f1(p.nxtFp)} FP` : `${plural(p.nxt ?? 0, "game")}, ${f1(p.nxtFp)} FP`;
+  const FPU = U().fp;
+  body += catProfile(p);
+  const wkLine = g ? `${f1(p.wkStarts)} starts, ${f1(p.wkFp)} ${FPU}` : `${plural(p.wk ?? 0, "game")}, ${f1(p.wkFp)} ${FPU}`;
+  const nxLine = g ? `${f1(p.nxtStarts)} starts, ${f1(p.nxtFp)} ${FPU}` : `${plural(p.nxt ?? 0, "game")}, ${f1(p.nxtFp)} ${FPU}`;
   body += `<div class="kv">
     <div><span>Rest of this week</span><b>${p.wk === null ? DASH : wkLine}</b></div>
     <div><span>Next week</span><b>${p.nxt === null ? DASH : nxLine}</b></div>
-    <div><span>Rest of season</span><b>${f0(p.rosFp)} FP</b></div>
-    <div><span>Value over a free agent</span><b>${sgn(p.rosVor, f0)} FP</b></div>
-    ${D.week.ps ? `<div><span>Your playoff weeks</span><b>${f0(p.poFp)} FP</b></div>` : ""}
+    <div><span>Rest of season</span><b>${f0(p.rosFp)} ${FPU}</b></div>
+    <div><span>Value over a free agent</span><b>${sgn(p.rosVor, f0)} ${FPU}</b></div>
+    ${D.week.ps ? `<div><span>Your playoff weeks</span><b>${f0(p.poFp)} ${FPU}</b></div>` : ""}
     <div><span>Season stats</span><b>${g ? `${f0(p.gp)} GP, ${f0(p.sv)} saves, ${f0(p.so)} SO` : `${f0(p.gp)} GP, ${f0(p.g)} G, ${f0(p.a)} A, ${f0(p.hit)} HIT, ${f0(p.blk)} BLK`}</b></div>
   </div>`;
   if (!g && !nz(p.shDiff) && p.shDiff >= 5)
@@ -1228,8 +1407,9 @@ function capList(id, items, fn, empty) {
 function renderWeek() {
   const W = D.week, nxt = W.focus === "next";
   const L = ids => ids.map(id => P.get(id)).filter(Boolean);
-  const stream = L(D.pulse.stream), goalies = L(D.pulse.goalies), hot = L(D.pulse.hot), cold = L(D.pulse.cold);
-  const sell = L(D.pulse.sell), buy = L(D.pulse.buy);
+  const PU = PULSE();
+  const stream = L(PU.stream), goalies = L(PU.goalies), hot = L(PU.hot), cold = L(PU.cold);
+  const sell = L(PU.sell), buy = L(PU.buy);
   const wkFp = p => nxt ? p.nxtFp : p.wkFp, wkG = p => nxt ? p.nxt : p.wk;
   const daysLeft = Math.round((dt(W.sun) - dt(W.today)) / 864e5) + 1;
 
@@ -1241,7 +1421,7 @@ function renderWeek() {
   const lnk = p => `<button class="lnk" data-pid="${p.id}">${esc(p.name)}</button>`;
   const brief = [];
   if (busy.length) brief.push(["b", top, `${busy.length > 4 ? busy.slice(0, 4).join(", ") + ` and ${busy.length - 4} more` : busy.join(", ")} ${busy.length === 1 ? "has" : "have"} the most games ${nxt ? "next week" : "left this week"} (${top}). Lean on players from ${busy.length === 1 ? "that team" : "those teams"}.`]);
-  if (stream[0]) brief.push(["g", "+", `Best pickup: ${lnk(stream[0])}, about ${f1(wkFp(stream[0]))} points over ${plural(wkG(stream[0]), "game")}. Check he's a free agent in Yahoo.`]);
+  if (stream[0]) brief.push(["g", "+", `Best pickup: ${lnk(stream[0])}, about ${f1(wkFp(stream[0]))} ${U().p} over ${plural(wkG(stream[0]), "game")}. Check he's a free agent in Yahoo.`]);
   if (hot[0]) brief.push(["r", "↑", `Hottest player: ${lnk(hot[0])}, scoring ${f2(hot[0].recFpg)} a game over the last ${C.recentDays} days.`]);
 
   const html = `
@@ -1251,13 +1431,13 @@ function renderWeek() {
 
     <section class="block blueline">
       <div class="bh"><h2>Games by team</h2>${seg("sched", [["wk", "Rest of week"], ["nxt", "Next week"]], weekState.sched)}</div>
-      <p class="hint">More games means more points. Teams with 4 are the best places to find streamers.</p>
+      <p class="hint">More games means more ${U().p}. Teams with 4 are the best places to find streamers.</p>
       ${heatGrid(weekState.sched)}
     </section>
 
     <section class="block">
       <h2>Pickups</h2>
-      <p class="hint">Players probably available in a ${C.leagueTeams}-team league, by points expected ${nxt ? "next week" : "for the rest of the week"}.</p>
+      <p class="hint">Players probably available in a ${C.leagueTeams}-team league, by ${U().p} expected ${nxt ? "next week" : "for the rest of the week"}.</p>
       ${capList("stream", stream, p => row(p, `<b>${f1(wkFp(p))}</b>`, plural(wkG(p), "game")), "No pickups to suggest yet.")}
     </section>
 
@@ -1269,7 +1449,7 @@ function renderWeek() {
 
     <section class="block redline">
       <div class="bh"><h2>Form</h2>${seg("form", [["hot", "Heating up"], ["cold", "Cooling off"]], weekState.form)}</div>
-      <p class="hint">Points per game over the last ${C.recentDays} days compared with their season.</p>
+      <p class="hint">${U().P} per game over the last ${C.recentDays} days compared with their season.</p>
       ${weekState.form === "hot"
         ? capList("hot", hot, p => row(p, `<b class="up">${sgn(p.recFpg - p.fpg, f2)}</b>`, `${f2(p.recFpg)} lately`), "Needs a few more games of data.")
         : capList("cold", cold, p => row(p, `<b class="dn">${sgn(p.recFpg - p.fpg, f2)}</b>`, `${f2(p.recFpg)} lately`), "Needs a few more games of data.")}
@@ -1296,14 +1476,14 @@ document.getElementById("v-week").addEventListener("click", e => {
 // ---------- RANKINGS ----------
 const SORTS = {
   sk: [["proj", "Projected per game"], ["rosFp", "Rest of season"], ["rosVor", "Value over a free agent"], ["fpg", "Season per game"],
-       ["recFpg", `Last ${C.recentDays} days`], ["fpgP", "Shots, hits and blocks"]],
+       ["recFpg", `Last ${C.recentDays} days`], ["fpgP", "Peripheral stats"]],
   g: [["projTG", "Projected per team game"], ["proj", "Projected per start"], ["rosFp", "Rest of season"], ["share", "Share of starts"], ["fpg", "Season per game"]],
 };
 const rs = { view: "sk", pos: "ALL", q: "", sort: { sk: "proj", g: "projTG" }, hv: "up", shown: 30 };
 function rankVal(p, k) {
   const v = p[k];
   if (k === "share") return [`<b>${pct(v * 100)}</b>`, "of starts"];
-  if (k === "rosFp") return [`<b>${f0(v)}</b>`, "points left"];
+  if (k === "rosFp") return [`<b>${f0(v)}</b>`, `${U().p} left`];
   if (k === "rosVor") return [`<b>${sgn(v, f0)}</b>`, "vs free agent"];
   if (k === "fpgP") return [`<b>${f2(v)}</b>`, "per game"];
   if (k === "proj" && isG(p)) return [`<b>${f2(v)}</b>`, "per start"];
@@ -1323,7 +1503,7 @@ function rankListHTML() {
 function renderRank() {
   const el = document.getElementById("v-rank");
   const head = `<h1>Rankings</h1>
-    <p class="intro">Everyone ranked by your league's scoring. Tap a player for the full picture.</p>
+    <p class="intro">Everyone ranked by ${U().by}. Tap a player for the full picture.</p>
     ${seg("rview", [["sk", "Skaters"], ["g", "Goalies"], ["hv", "Hidden value"]], rs.view, true)}`;
   let body = "";
   if (rs.view === "hv") {
@@ -1331,8 +1511,8 @@ function renderRank() {
     const items = rs.hv === "up" ? pool.slice(0, 30) : pool.slice(-30).reverse();
     body = `<div style="margin:16px 0 4px">${seg("hv", [["up", "Better than their points"], ["down", "Worse than their points"]], rs.hv)}</div>
       <p class="hint">${rs.hv === "up"
-        ? "Your scoring ranks these players much higher than plain NHL points do, usually because of hits, blocks and shots. League-mates who draft by points will undervalue them."
-        : "NHL points make these players look better than they are in your league. Few hits, blocks or shots, so they rely on scoring."}</p>
+        ? `${CAT() ? "Your categories rank" : "Your scoring ranks"} these players much higher than plain NHL points do, usually because of ${U().peri}. League-mates who draft by points will undervalue them.`
+        : `NHL points make these players look better than they are in your league. Little ${U().peri.replace(" and ", " or ")}, so they rely on scoring.`}</p>
       ${listHTML(items, p => row(p, `<b class="${p.gap > 0 ? "dn" : "up"}">${p.gap > 0 ? "+" : "−"}${Math.abs(p.gap)}</b>`, `#${p.rank} here, #${p.ppgRank} by points`), "Not enough games yet.")}`;
   } else {
     const isSk = rs.view === "sk";
@@ -1346,7 +1526,7 @@ function renderRank() {
           `<option value="${k}" ${k === sortKey ? "selected" : ""}>${l}</option>`).join("")}</select></div>
       </div>
       <div id="rlist">${rankListHTML()}</div>
-      ${isSk ? `<p class="hint" style="margin-top:12px">The small bar shows where points come from: <b style="color:var(--blue)">blue</b> is goals and assists, <b style="color:var(--gold)">gold</b> is shots, hits and blocks.</p>` : ""}`;
+      ${isSk ? `<p class="hint" style="margin-top:12px">The small bar shows where ${U().p} come from: <b style="color:var(--blue)">blue</b> is ${U().sc}, <b style="color:var(--gold)">gold</b> is ${U().peri}.</p>` : ""}`;
   }
   el.innerHTML = head + body;
   const rq = document.getElementById("rq");
@@ -1362,7 +1542,7 @@ document.getElementById("v-rank").addEventListener("click", e => {
 });
 
 // ---------- player search ----------
-const ALL = [...P.values()].sort((a, b) => (b.rosFp || 0) - (a.rosFp || 0));
+let ALL = [];
 function picker(root, placeholder, onPick) {
   root.innerHTML = `<div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg>
     <input type="search" placeholder="${placeholder}" autocomplete="off" autocorrect="off" spellcheck="false"></div><div class="sugg" hidden></div>`;
@@ -1387,29 +1567,29 @@ function addCompare(id) {
   if (!cmp.includes(id)) { if (cmp.length >= 4) cmp.shift(); cmp.push(id); }
   store.set("cmp", cmp); renderCompare(); toast(`Added ${p.name} to Compare`);
 }
-const GROUPS = [
+const GROUPS = () => [
   { title: "Value", rows: [
-    ["Projected points per game", p => projTG(p), f2, "hi"],
-    ["Points left this season", p => p.rosFp, f0, "hi"],
+    [`Projected ${U().p} per game`, p => projTG(p), f2, "hi"],
+    [`${U().P} left this season`, p => p.rosFp, f0, "hi"],
     ["Value over a free agent", p => p.rosVor, v => sgn(v, f0), "hi"],
     ["Your playoff weeks", p => D.week.ps ? p.poFp : null, f0, "hi"],
   ]},
   { title: "Schedule", rows: [
     ["Games left this week", p => p.wk, f0, "hi"],
-    ["Points expected this week", p => p.wkFp, f1, "hi"],
+    [`${U().P} expected this week`, p => p.wkFp, f1, "hi"],
     ["Games next week", p => p.nxt, f0, "hi"],
-    ["Points expected next week", p => p.nxtFp, f1, "hi"],
+    [`${U().P} expected next week`, p => p.nxtFp, f1, "hi"],
   ]},
   { title: "Form and style", rows: [
-    ["Season points per game", p => p.fpg, f2, "hi"],
+    [`Season ${U().p} per game`, p => p.fpg, f2, "hi"],
     [`Last ${C.recentDays} days per game`, p => isG(p) ? null : p.recFpg, f2, "hi"],
-    ["From shots, hits and blocks", p => isG(p) ? null : p.peri, pct, null],
+    [`From ${U().peri}`, p => isG(p) ? null : p.peri, pct, null],
     ["Shooting % (usual)", p => isG(p) ? null : p.sh, (v, p) => nz(v) ? DASH : `${f1(v)}%<small>usually ${f1(p.shBase)}%</small>`, null],
     ["Rank at position", p => isG(p) ? p.projRank : p.posRank, v => nz(v) ? DASH : "#" + v, "lo"],
   ]},
   { title: "Goalies", goalie: true, rows: [
     ["Share of starts", p => isG(p) ? p.share * 100 : null, pct, "hi"],
-    ["Projected points per start", p => isG(p) ? p.proj : null, f2, "hi"],
+    [`Projected ${U().p} per start`, p => isG(p) ? p.proj : null, f2, "hi"],
     ["Save %", p => isG(p) ? p.svPct : null, f3, "hi"],
   ]},
 ];
@@ -1424,7 +1604,7 @@ function renderCompare() {
     const cols = `grid-template-columns:repeat(${n},minmax(0,1fr))`;
     body = `<div class="chead" style="${cols}">${ps.map(p => `<div class="pcol"><button class="x" data-rm="${p.id}" aria-label="Remove ${esc(p.name)}">✕</button>
       <b data-pid="${p.id}" style="cursor:pointer;padding-right:14px">${esc(p.name)}</b>${meta(p)}</div>`).join("")}</div>`;
-    GROUPS.forEach(gr => {
+    GROUPS().forEach(gr => {
       if (gr.goalie && !ps.some(isG)) return;
       const rows = gr.rows.map(([label, get, fmt, better]) => {
         const vals = ps.map(get);
@@ -1492,7 +1672,7 @@ function sideHTML(side, title) {
   const ps = trade[side].map(id => P.get(id)).filter(Boolean);
   return `<div class="side"><h2>${title}</h2>
     ${ps.length ? `<div class="list">${ps.map(p => `<div class="row" style="cursor:default"><span class="who" data-pid="${p.id}" style="cursor:pointer"><b>${esc(p.name)}</b>${meta(p)}</span>
-      <span class="val"><b>${f0(p.rosFp)}</b><small>points left</small></span>
+      <span class="val"><b>${f0(p.rosFp)}</b><small>${U().p} left</small></span>
       <button class="rm" data-trm="${side}:${p.id}" aria-label="Remove ${esc(p.name)}">✕</button></div>`).join("")}</div>` : ""}
     <div class="addwrap" id="pick-${side}"></div></div>`;
 }
@@ -1510,16 +1690,17 @@ function renderTrade() {
     const fair = Math.max(8, 0.08 * Math.max(G.val, R.val));
     const x = Math.max(-1, Math.min(1, net / scale));
     const cls = Math.abs(net) <= fair ? "" : net > 0 ? "win" : "lose";
-    const head = Math.abs(net) <= fair ? "Even trade" : net > 0 ? `You win by ${f0(net)} points` : `You lose by ${f0(-net)} points`;
+    const u = U();
+    const head = Math.abs(net) <= fair ? "Even trade" : net > 0 ? `You win by ${f0(net)} ${u.p}` : `You lose by ${f0(-net)} ${u.p}`;
     const facts = [];
-    facts.push(`Rest of the season: ${sgn(R.rosFp - G.rosFp, f0)} total points for you.`);
+    facts.push(`Rest of the season: ${sgn(R.rosFp - G.rosFp, f0)} total ${u.p} for you.`);
     const wk = R.wkFp - G.wkFp, nw = R.nxtFp - G.nxtFp, po = R.poFp - G.poFp;
-    if (Math.abs(wk) >= 3) facts.push(`This week it ${wk > 0 ? "adds" : "costs"} about ${f1(Math.abs(wk))} points.`);
-    if (Math.abs(nw) >= 3) facts.push(`Next week it ${nw > 0 ? "adds" : "costs"} about ${f1(Math.abs(nw))} points.`);
-    if (D.week.ps && Math.abs(po) >= 3) facts.push(`In your playoff weeks (${fd(D.week.ps)} to ${fd(D.week.pe)}) it ${po > 0 ? "adds" : "costs"} about ${f0(Math.abs(po))} points.`);
+    if (Math.abs(wk) >= 3) facts.push(`This week it ${wk > 0 ? "adds" : "costs"} about ${f1(Math.abs(wk))} ${u.p}.`);
+    if (Math.abs(nw) >= 3) facts.push(`Next week it ${nw > 0 ? "adds" : "costs"} about ${f1(Math.abs(nw))} ${u.p}.`);
+    if (D.week.ps && Math.abs(po) >= 3) facts.push(`In your playoff weeks (${fd(D.week.ps)} to ${fd(D.week.pe)}) it ${po > 0 ? "adds" : "costs"} about ${f0(Math.abs(po))} ${u.p}.`);
     if (G.peri !== null && R.peri !== null && Math.abs(R.peri - G.peri) >= 8)
-      facts.push(R.peri > G.peri ? `You get steadier production: ${pct(R.peri)} from shots, hits and blocks, versus ${pct(G.peri)}.`
-                                 : `You get streakier production: ${pct(R.peri)} from shots, hits and blocks, versus ${pct(G.peri)}.`);
+      facts.push(R.peri > G.peri ? `You get steadier production: ${pct(R.peri)} from ${u.peri}, versus ${pct(G.peri)}.`
+                                 : `You get streakier production: ${pct(R.peri)} from ${u.peri}, versus ${pct(G.peri)}.`);
     const lucky = R.ps.filter(p => !isG(p) && !nz(p.shDiff) && p.shDiff >= 5);
     if (lucky.length) facts.push(`${lucky.map(p => esc(p.name)).join(" and ")} ${lucky.length > 1 ? "are" : "is"} shooting well above normal. Expect fewer goals.`);
     const due = R.ps.filter(p => !isG(p) && !nz(p.shDiff) && p.shDiff <= -4);
@@ -1529,17 +1710,17 @@ function renderTrade() {
     if (G.n !== R.n) facts.push(R.n > G.n ? `You'll need to drop ${plural(R.n - G.n, "player")} to make room. That's already factored in.` : `You free up ${plural(G.n - R.n, "roster spot")}. That's already factored in.`);
     const tr = (l, a, b, f) => `<tr><td>${l}</td><td>${f(a)}</td><td>${f(b)}</td><td>${sgn(b - a, f)}</td></tr>`;
     const summary = [`Trade check, ${D.generated}`, `Give: ${G.ps.map(p => p.name).join(", ")}`, `Get: ${R.ps.map(p => p.name).join(", ")}`,
-      `${head}. Value over a free agent: ${Math.round(G.val)} given, ${Math.round(R.val)} received.`].join("\n");
+      `${head}${CAT() ? " (categories)" : ""}. Value over a free agent: ${Math.round(G.val)} given, ${Math.round(R.val)} received.`].join("\n");
     verdict = `<div class="verdict">${rinkSVG(x)}<div class="ends"><span>Their end</span><span>Your end</span></div>
       <div class="vh ${cls}">${head}</div>
-      <p class="vs">Measured in points above what a free agent would give you, for the rest of the season.</p>
+      <p class="vs">Measured in ${U().p} above what a free agent would give you, for the rest of the season.</p>
       <ul class="facts">${facts.map(f => `<li>${f}</li>`).join("")}</ul>
       <details class="more-d"><summary>See the numbers</summary>
         <table class="dt"><thead><tr><th></th><th>Give</th><th>Get</th><th>Change</th></tr></thead><tbody>
         ${tr("Value over a free agent", G.val, R.val, f0)}
-        ${tr("Points left this season", G.rosFp, R.rosFp, f0)}
-        ${tr("Points this week", G.wkFp, R.wkFp, f1)}
-        ${tr("Points next week", G.nxtFp, R.nxtFp, f1)}
+        ${tr(`${u.P} left this season`, G.rosFp, R.rosFp, f0)}
+        ${tr(`${u.P} this week`, G.wkFp, R.wkFp, f1)}
+        ${tr(`${u.P} next week`, G.nxtFp, R.nxtFp, f1)}
         ${D.week.ps ? tr("Your playoff weeks", G.poFp, R.poFp, f0) : ""}
         </tbody></table></details>
       <div class="actions"><button class="btn primary" id="tConcept">Try in My team</button><button class="btn" id="tCopy">Copy for league chat</button><button class="btn" id="tSwap">Swap sides</button><button class="btn ghost" id="tClear">Clear</button></div>
@@ -1561,20 +1742,56 @@ function renderTrade() {
 }
 
 // ---------- MY TEAM ----------
-let team, irSet;
-const fileTeam = D.myTeam || { roster: [], ir: [], version: "" };
-if (fileTeam.version && store.get("teamFrom", "") !== fileTeam.version) {
-  team = fileTeam.roster.filter(id => P.has(id));
-  irSet = new Set(fileTeam.ir.filter(id => P.has(id)));
-  store.set("teamFrom", fileTeam.version); store.set("team", team); store.set("ir", [...irSet]);
-} else {
-  team = store.get("team", []).filter(id => P.has(id));
-  irSet = new Set(store.get("ir", []).filter(id => P.has(id)));
+// Up to three teams, each with its own roster, IR, lineup, concept, hidden players and Points/Cats focus.
+const MAXT = C.maxTeams || 3;
+const freeName = () => { for (let n = 1; ; n++) if (!teams.some(t => t.name === `Team ${n}`)) return `Team ${n}`; };
+const blankTeam = name => ({ name, roster: [], ir: [], lineup: null, concept: [], taken: [], from: "", mode: "pts" });
+let teams = store.get("teams", null);
+if (!Array.isArray(teams) || !teams.length) {
+  // first run with team switching: keep the team already saved on this device
+  const had = store.get("team", null);
+  teams = [{ ...blankTeam("Team 1"), roster: had || [], ir: store.get("ir", []), lineup: store.get("lineup", null),
+    concept: store.get("concept", []), taken: store.get("taken", []), from: store.get("teamFrom", ""), fileSlot: 0 }];
+  store.set("fileSeen", had ? [0] : []);
 }
-let taken = new Set(store.get("taken", []));
-const saveTeam = () => { store.set("team", team); store.set("ir", [...irSet]); store.set("elig", elig); store.set("taken", [...taken]); };
+teams = teams.filter(t => t && typeof t === "object").slice(0, MAXT).map((t, i) => ({ ...blankTeam(`Team ${i + 1}`), ...t }));
+// Teams from my_league.json: refresh a team when its file roster changes. A file team you delete stays deleted.
+const fileTeams = D.myTeams || (D.myTeam && D.myTeam.version ? [D.myTeam] : []);
+const fileSeen = new Set(store.get("fileSeen", []));
+fileTeams.slice(0, MAXT).forEach((ft, i) => {
+  if (!ft || !ft.version) return;
+  let t = teams.find(x => x.fileSlot === i);
+  if (!t) {
+    if (fileSeen.has(i) || teams.length >= MAXT) return;
+    t = { ...blankTeam(ft.name || freeName()), fileSlot: i };
+    if (teams.length === 1 && !teams[0].roster.length && teams[0].fileSlot === undefined) teams[0] = t; else teams.push(t);
+  }
+  fileSeen.add(i);
+  if (t.from !== ft.version) { t.roster = ft.roster.slice(); t.ir = ft.ir.slice(); t.lineup = null; t.from = ft.version; }
+  if (ft.name && !t.named) t.name = ft.name;
+  if (ft.focus && !t.modeSet) t.mode = ft.focus;
+});
+store.set("fileSeen", [...fileSeen]); store.set("teams", teams);
+let cur = 0, team = [], irSet = new Set(), manual = null, concept = [], taken = new Set();
+function loadTeam(i) {
+  cur = Math.max(0, Math.min(teams.length - 1, i | 0));
+  const t = teams[cur];
+  team = (t.roster || []).filter(id => P.has(id));
+  irSet = new Set((t.ir || []).filter(id => P.has(id)));
+  manual = Array.isArray(t.lineup) ? t.lineup : null;
+  concept = (t.concept || []).filter(x => x && Array.isArray(x.give) && Array.isArray(x.get));
+  taken = new Set(t.taken || []);
+  store.set("curTeam", cur);
+}
+function persistTeams() {
+  Object.assign(teams[cur], { roster: team.slice(), ir: [...irSet], lineup: manual, concept, taken: [...taken] });
+  store.set("teams", teams);
+}
+const saveTeam = () => { persistTeams(); store.set("elig", elig); };
+loadTeam(store.get("curTeam", 0));
 const onTeam = id => team.includes(id);
-const teamState = { tab: "lineup", moves: "season", moving: null };
+const teamState = { tab: "lineup", moves: "season", moving: null, renaming: false };
+let confirmDel = false;
 const ROSTER_MAX = Object.values(C.slots).reduce((a, b) => a + b, 0) + (C.bench || 4);
 const GPW = 3.3; // average games per team per week
 const avg = xs => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
@@ -1627,7 +1844,6 @@ function autoLineup(ids) {
   }
   return { slots, bench };
 }
-let manual = store.get("lineup", null);
 function lineup() {
   const ir = team.filter(id => irSet.has(id)).map(id => P.get(id)).filter(Boolean);
   if (!manual) return { ...autoLineup(), ir, manual: false };
@@ -1652,12 +1868,13 @@ function doSwap(L, from, to) {
   const a = keyPlayer(L, from), b = keyPlayer(L, to);
   if (from[0] === "S") arr[+from.slice(1)] = b ? b.id : null;
   if (to[0] === "S") arr[+to.slice(1)] = a.id;
-  manual = arr; store.set("lineup", manual);
+  manual = arr; persistTeams();
   toast(b ? `Swapped ${a.name} and ${b.name}` : `Moved ${a.name} to ${keyLabel(L, to)}`);
 }
 
 // What a typical starter looks like in your league, per slot type
-const LG = (() => {
+let LG = {};
+function calcLG() {
   const T = C.leagueTeams, out = {}, used = new Set();
   const q = SK.filter(p => p.q);
   ["C", "LW", "RW", "D"].forEach(pos => {
@@ -1671,7 +1888,12 @@ const LG = (() => {
   const g = GO.filter(x => x.q).sort((a, b) => b.projTG - a.projTG);
   out.G = avg(g.slice(0, T * (C.slots.G || 0)).map(x => x.projTG)); out.GMax = g[0] ? g[0].projTG : 1;
   return out;
-})();
+}
+function refreshDerived() {
+  maxSplit = Math.max(0.01, ...SK.filter(p => p.q).map(p => Math.max(0, p.fpgS) + Math.max(0, p.fpgP)));
+  ALL = [...P.values()].sort((a, b) => (b.rosFp || 0) - (a.rosFp || 0));
+  LG = calcLG();
+}
 
 const nxtFocus = () => D.week.focus === "next";
 const wkKey = () => nxtFocus() ? "nxtFp" : "wkFp";
@@ -1696,7 +1918,7 @@ function shapeHTML(L) {
       <div class="sh-bar" title="Yours ${f2(mine)} vs typical ${f2(lg)}"><i class="${tag[0]}" style="width:${Math.min(100, mine / max * 100)}%"></i><em style="left:${Math.min(100, lg / max * 100)}%"></em></div>
       <span class="sh-v">${f2(mine)}</span><span class="sh-tag ${tag[0]}">${tag[1]}</span></div>`;
   }).join("")}
-  <p class="hint" style="margin-top:10px">Bars show your starters' projected points per game. The tick marks a typical starter in a ${C.leagueTeams}-team league.</p></div>`;
+  <p class="hint" style="margin-top:10px">Bars show your starters' projected ${U().p} per game. The tick marks a typical starter in a ${C.leagueTeams}-team league.</p></div>`;
 }
 
 function prosCons(L, rosterIds) {
@@ -1712,8 +1934,8 @@ function prosCons(L, rosterIds) {
     const empty = ps.filter(x => !x.p).length;
     if (empty) {
       C_("empty:" + gp, empty === ps.length
-        ? `Your ${gp} spot${ps.length > 1 ? "s are" : " is"} empty. Add a ${gp === "Util" ? "skater" : gp} so you stop losing points every game.`
-        : `${empty} of your ${ps.length} ${gp} spots ${empty > 1 ? "are" : "is"} empty. Add a ${gp} so you stop losing points every game.`);
+        ? `Your ${gp} spot${ps.length > 1 ? "s are" : " is"} empty. Add a ${gp === "Util" ? "skater" : gp} so you stop losing ${U().p} every game.`
+        : `${empty} of your ${ps.length} ${gp} spots ${empty > 1 ? "are" : "is"} empty. Add a ${gp} so you stop losing ${U().p} every game.`);
       return;
     }
     const mine = avg(ps.map(x => projTG(x.p))), lg = LG[gp];
@@ -1725,14 +1947,14 @@ function prosCons(L, rosterIds) {
   const weakS = starters.filter(p => (p.vor || 0) < 0);
   if (weakS.length) C_("belowFA", `${names(weakS)} ${weakS.length > 1 ? "are" : "is"} starting, but a free agent at the same position would score about as much. Check Moves for upgrades.`);
   starters.filter(isG).forEach(g => {
-    if (g.share >= 0.75) P_("gshare:" + g.id, `${nameL(g)} starts ${pct(g.share * 100)} of his team's games. That steady workload is worth a lot in your scoring.`);
+    if (g.share >= 0.75) P_("gshare:" + g.id, `${nameL(g)} starts ${pct(g.share * 100)} of his team's games. That steady workload is worth a lot in ${U().by}.`);
     else if (g.share < 0.55) C_("gshare:" + g.id, `${nameL(g)} only starts ${pct(g.share * 100)} of his team's games. Goalie starts are your biggest weekly lever.`);
   });
   if (sk.length >= 4) {
     const tot = sk.reduce((s, p) => s + p.proj, 0) || 1;
     const peri = sk.reduce((s, p) => s + p.peri * p.proj, 0) / tot;
-    if (peri >= 38) P_("peri", `${pct(peri)} of your skaters' points come from shots, hits and blocks, so your weekly floor is steady.`);
-    else if (peri <= 25) C_("peri", `Only ${pct(peri)} of your skaters' points come from shots, hits and blocks. Your weeks will swing with goals. A hitting, shot-blocking defenceman would steady things.`);
+    if (peri >= 38) P_("peri", `${pct(peri)} of your skaters' ${U().p} come from ${U().peri}, so your weekly floor is steady.`);
+    else if (peri <= 25) C_("peri", `Only ${pct(peri)} of your skaters' ${U().p} come from ${U().peri}. Your weeks will swing with goals. A hitting, shot-blocking defenceman would steady things.`);
   }
   const ros = (rosterIds || team).map(id => P.get(id)).filter(Boolean);
   const sell = ros.filter(p => !isG(p) && !nz(p.shDiff) && p.shDiff >= 5);
@@ -1775,9 +1997,9 @@ function seasonMoves(L) {
     used.add(c.id);
     const why = [`${esc(c.name)} projects ${f2(projTG(c))} a game against ${f2(projTG(d))}.`];
     if (isG(d) && c.share - d.share >= 0.1) why.push(`He starts ${pct(c.share * 100)} of his team's games, ${esc(d.name)} ${pct(d.share * 100)}.`);
-    if (!isG(d) && c.peri - d.peri >= 10) why.push(`More of his points come from hits, blocks and shots (${pct(c.peri)}), so they're steadier.`);
+    if (!isG(d) && c.peri - d.peri >= 10) why.push(`More of his ${U().p} come from ${U().peri} (${pct(c.peri)}), so they're steadier.`);
     if ((c.ros || 0) - (d.ros || 0) >= 2) why.push(`His team has ${(c.ros || 0) - (d.ros || 0)} more games left.`);
-    out.push({ d, c, gain, unit: "points rest of season", why: why.join(" ") });
+    out.push({ d, c, gain, unit: `${U().p} rest of season`, why: why.join(" ") });
   }
   return out.sort((a, b) => b.gain - a.gain).slice(0, 5);
 }
@@ -1799,7 +2021,7 @@ function weekMoves(L) {
     const why = isG(d)
       ? `About ${f1(nxtFocus() ? c.nxtStarts : c.wkStarts)} starts for ${esc(c.name)}, against ${f1(nxtFocus() ? d.nxtStarts : d.wkStarts)} for ${esc(d.name)}.`
       : `${esc(c.name)} has ${plural(c[gk] || 0, "game")} ${nxtFocus() ? "next week" : "left this week"}, ${esc(d.name)} has ${d[gk] || 0}. It's a short-term stream: swap back later if you like.`;
-    out.push({ d, c, gain, unit: nxtFocus() ? "points next week" : "points this week", why });
+    out.push({ d, c, gain, unit: nxtFocus() ? `${U().p} next week` : `${U().p} this week`, why });
   }
   return out.sort((a, b) => b.gain - a.gain).slice(0, 4);
 }
@@ -1815,8 +2037,7 @@ function moveCard(m) {
 }
 
 // ---------- concept team (what-if trades) ----------
-let concept = store.get("concept", []).filter(t => t && Array.isArray(t.give) && Array.isArray(t.get));
-const saveConcept = () => store.set("concept", concept);
+const saveConcept = () => persistTeams();
 let confirmApply = false;
 function conceptIds() {
   let active = team.filter(id => !irSet.has(id)), ir = team.filter(id => irSet.has(id));
@@ -1883,15 +2104,15 @@ function conceptHTML(Lcur) {
     <h2 class="sub2">Trades in this concept <span class="cnt">${concept.length}</span></h2>
     <div class="ctrades">${trades}</div>
     <div class="tsum">
-      <div><b>${f0(m1.week)}</b><span>points in a typical week</span>${delta(Math.round(m1.week) - Math.round(m0.week))}</div>
+      <div><b>${f0(m1.week)}</b><span>${U().p} in a typical week</span>${delta(Math.round(m1.week) - Math.round(m0.week))}</div>
       <div><b>${f0(SLOTS.reduce((s, sl) => s + (LG[sl] || 0), 0) * GPW)}</b><span>typical team in your league</span></div>
       <div><b>${f0(m1.focus)}</b><span>${nxtFocus() ? "projected next week" : "left this week"}</span>${delta(Math.round(m1.focus) - Math.round(m0.focus))}</div>
     </div>
     <div class="verdict" style="margin-top:14px">
-      <div class="vh ${verdictCls}" style="margin-top:0">${m1.vor - m0.vor > 5 ? `Better by ${Math.round(m1.vor) - Math.round(m0.vor)} points` : m1.vor - m0.vor < -5 ? `Worse by ${Math.round(m0.vor) - Math.round(m1.vor)} points` : "About the same"}</div>
+      <div class="vh ${verdictCls}" style="margin-top:0">${m1.vor - m0.vor > 5 ? `Better by ${Math.round(m1.vor) - Math.round(m0.vor)} ${U().p}` : m1.vor - m0.vor < -5 ? `Worse by ${Math.round(m0.vor) - Math.round(m1.vor)} ${U().p}` : "About the same"}</div>
       <p class="vs">Value your starting lineup adds over free agents for the rest of the season, now versus with these trades.</p>
       <table class="dt"><thead><tr><th></th><th>Now</th><th>Concept</th><th>Change</th></tr></thead><tbody>
-        ${row("Points in a typical week", m0.week, m1.week, f0)}
+        ${row(`${U().P} in a typical week`, m0.week, m1.week, f0)}
         ${row(nxtFocus() ? "Projected next week" : "Left this week", m0.focus, m1.focus, f0)}
         ${row("Value over free agents", m0.vor, m1.vor, f0)}
         ${D.week.ps ? row("Your playoff weeks", m0.po, m1.po, f0) : ""}
@@ -1915,8 +2136,8 @@ function conceptHTML(Lcur) {
 function applyConcept() {
   const K = conceptIds();
   team = [...K.active, ...K.ir]; irSet = new Set(K.ir);
-  manual = null; store.set("lineup", null);
-  concept = []; saveConcept(); saveTeam(); confirmApply = false;
+  manual = null;
+  concept = []; saveTeam(); confirmApply = false;
   teamState.tab = "lineup"; renderTeam(); renderWeek();
   toast("My team updated");
 }
@@ -1948,7 +2169,7 @@ function renderTeam() {
     const mineWk = starters.reduce((s, p) => s + projTG(p), 0) * GPW;
     const lgWk = SLOTS.reduce((s, sl) => s + (LG[sl] || 0), 0) * GPW;
     const thisWk = starters.reduce((s, p) => s + (p[wkKey()] || 0), 0);
-    body = `<div class="tsum"><div><b>${f0(mineWk)}</b><span>points in a typical week</span></div><div><b>${f0(lgWk)}</b><span>typical team in your league</span></div><div><b>${f0(thisWk)}</b><span>${nxtFocus() ? "projected next week" : "left this week"}</span></div></div>
+    body = `<div class="tsum"><div><b>${f0(mineWk)}</b><span>${U().p} in a typical week</span></div><div><b>${f0(lgWk)}</b><span>typical team in your league</span></div><div><b>${f0(thisWk)}</b><span>${nxtFocus() ? "projected next week" : "left this week"}</span></div></div>
       ${teamState.moving ? `<div class="movebar"><span>Moving <b>${esc(keyPlayer(L, teamState.moving).name)}</b>. Tap a highlighted spot.</span><button class="btn" data-cancelmove>Cancel</button></div>` : ""}
       <div class="sub2 sbar"><h2>Starters</h2>${L.manual ? `<button class="btn ghost small" data-autolineup>Best lineup</button>` : `<span class="cnt">Best lineup</span>`}</div>
       <div class="list">${L.slots.map((x, i) => slotRow(x.s, x.p, "S" + i, L)).join("")}</div>
@@ -1975,20 +2196,37 @@ function renderTeam() {
       ${ms.length ? ms.map(moveCard).join("") : `<div class="list"><div class="empty">No clear upgrades right now. Your roster beats what's likely on waivers.</div></div>`}
       ${taken.size ? `<button class="more" data-untake>Show hidden players again (${taken.size})</button>` : ""}`;
   }
-  el.innerHTML = `<h1>My team</h1>
-    <p class="intro">${team.length ? `${plural(team.length - L.ir.length, "active player")} of ${ROSTER_MAX}${L.ir.length ? `, ${L.ir.length} on IR` : ""}.${fileTeam.version ? " Loaded from your league file. After a trade or pickup, add or remove players here, or ask Claude to update the file." : ""}` : "Build your roster to get a lineup, a report card and moves to make."}</p>
+  const T = teams[cur];
+  const title = teamState.renaming
+    ? `<form class="rename" data-rename><input id="tName" maxlength="24" value="${esc(T.name)}" aria-label="Team name" autocomplete="off"><button class="btn primary small">Save</button><button type="button" class="btn ghost small" data-cancelrename>Cancel</button></form>`
+    : `<div class="th"><h1>${esc(T.name)}</h1><button class="btn ghost small" data-renameteam>Rename</button></div>`;
+  const focusTxt = CAT() ? "Ranked by categories." : "Ranked by points.";
+  el.innerHTML = `${title}
+    <p class="intro">${team.length ? `${plural(team.length - L.ir.length, "active player")} of ${ROSTER_MAX}${L.ir.length ? `, ${L.ir.length} on IR` : ""}. ${focusTxt}${T.from ? " Loaded from your league file. After a trade or pickup, add or remove players here, or ask Claude to update the file." : ""}` : `Build your roster to get a lineup, a report card and moves to make. ${focusTxt} Use the switch at the top to change it.`}</p>
     ${team.length ? tabs : ""}
     <div id="tPick" style="margin-top:14px" ${teamState.tab === "concept" ? "hidden" : ""}></div>
-    ${body}`;
+    ${body}
+    ${teams.length > 1 && (!team.length || teamState.tab === "lineup") ? `<div class="actions" style="margin-top:22px"><button class="btn ghost" data-delteam>${confirmDel ? `Tap again to delete ${esc(T.name)}` : "Delete this team"}</button></div>` : ""}`;
   picker(document.getElementById("tPick"), "Add a player to your roster", addToTeam);
+  const tn = document.getElementById("tName"); if (tn) { tn.focus(); tn.select(); }
 }
+document.getElementById("v-team").addEventListener("submit", e => {
+  if (!e.target.closest("[data-rename]")) return;
+  e.preventDefault();
+  const v = (document.getElementById("tName").value || "").trim().slice(0, 24);
+  if (v) { teams[cur].name = v; teams[cur].named = true; persistTeams(); }
+  teamState.renaming = false; renderTeam(); renderCtx();
+});
 document.getElementById("v-team").addEventListener("click", e => {
+  if (e.target.closest("[data-renameteam]")) { teamState.renaming = true; return renderTeam(); }
+  if (e.target.closest("[data-cancelrename]")) { teamState.renaming = false; return renderTeam(); }
+  if (e.target.closest("[data-delteam]")) { if (confirmDel) return deleteTeam(); confirmDel = true; return renderTeam(); }
   const mvb = e.target.closest("[data-move]");
   if (mvb) { e.stopPropagation(); teamState.moving = teamState.moving === mvb.dataset.move ? null : mvb.dataset.move; return renderTeam(); }
   const sw = e.target.closest("[data-swap]");
   if (sw && teamState.moving) { e.stopPropagation(); doSwap(lineup(), teamState.moving, sw.dataset.swap); teamState.moving = null; renderTeam(); renderWeek(); return; }
   if (e.target.closest("[data-cancelmove]")) { teamState.moving = null; return renderTeam(); }
-  if (e.target.closest("[data-autolineup]")) { manual = null; store.set("lineup", null); teamState.moving = null; toast("Best lineup set"); return renderTeam(); }
+  if (e.target.closest("[data-autolineup]")) { manual = null; persistTeams(); teamState.moving = null; toast("Best lineup set"); return renderTeam(); }
   const crm = e.target.closest("[data-crm]");
   if (crm) { concept.splice(+crm.dataset.crm, 1); saveConcept(); confirmApply = false; return renderTeam(); }
   if (e.target.closest("[data-cclear]")) { concept = []; saveConcept(); confirmApply = false; toast("Concept cleared"); return renderTeam(); }
@@ -2002,6 +2240,51 @@ document.getElementById("v-team").addEventListener("click", e => {
   if (e.target.closest("[data-untake]")) { taken.clear(); saveTeam(); renderTeam(); }
 });
 
+// ---------- team switcher + points/cats ----------
+function renderCtx() {
+  document.getElementById("ctx").innerHTML = `<div class="tsw" role="group" aria-label="Your teams">${teams.map((t, i) =>
+    `<button class="tchip" data-team="${i}" aria-pressed="${i === cur}">${esc(t.name)}</button>`).join("")}${teams.length < MAXT
+    ? `<button class="tchip add" data-newteam aria-label="Add a team">${teams.length > 1 ? "+" : "+ Team"}</button>` : ""}</div>
+    ${seg("mode", [["pts", "Points"], ["cat", "Cats"]], mode)}`;
+}
+function renderAll() {
+  if (sheet.classList.contains("open")) closeSheet();
+  renderCtx(); renderWeek(); renderTeam(); renderRank(); renderCompare(); renderTrade(); renderGuide();
+}
+function resetTeamUI() { teamState.moving = null; teamState.renaming = false; confirmApply = false; confirmDel = false; }
+function switchTeam(i) {
+  if (i === cur || !teams[i]) return;
+  persistTeams(); loadTeam(i); resetTeamUI();
+  applyMode(teams[cur].mode); renderAll();
+  toast(`${teams[cur].name}: ${CAT() ? "categories" : "points"}`);
+}
+function newTeam() {
+  if (teams.length >= MAXT) return;
+  persistTeams();
+  teams.push({ ...blankTeam(freeName()), mode });
+  loadTeam(teams.length - 1); persistTeams(); resetTeamUI(); teamState.tab = "lineup";
+  renderAll(); go("team"); toast(`Added ${teams[cur].name}. Add players below`);
+}
+function deleteTeam() {
+  if (teams.length < 2) return;
+  const gone = teams[cur].name;
+  if (teams[cur].fileSlot !== undefined) { const seen = new Set(store.get("fileSeen", [])); seen.add(teams[cur].fileSlot); store.set("fileSeen", [...seen]); }
+  teams.splice(cur, 1); store.set("teams", teams);
+  loadTeam(Math.max(0, cur - 1)); resetTeamUI();
+  applyMode(teams[cur].mode); renderAll(); toast(`Deleted ${gone}`);
+}
+function setMode(m) {
+  if (m === mode) return;
+  teams[cur].mode = m; teams[cur].modeSet = true; persistTeams();
+  applyMode(m); renderAll();
+  toast(m === "cat" ? "Ranking by categories" : "Ranking by points");
+}
+document.getElementById("ctx").addEventListener("click", e => {
+  const t = e.target.closest("[data-team]"); if (t) return switchTeam(+t.dataset.team);
+  if (e.target.closest("[data-newteam]")) return newTeam();
+  const s = e.target.closest("[data-seg]"); if (s && s.dataset.seg === "mode") return setMode(s.dataset.val);
+});
+
 // ---------- GUIDE ----------
 function renderGuide() {
   const s = Object.fromEntries(C.skaterScoring);
@@ -2012,9 +2295,17 @@ function renderGuide() {
   document.getElementById("v-guide").innerHTML = `<h1>Guide</h1>
     <p class="intro">How this app works. It rebuilds itself from NHL stats every morning around 5 AM.</p>
     <div class="guide">
-    ${sec("Your league's scoring", `${pts(C.skaterScoring)}<div style="height:8px"></div>${pts(C.goalieScoring)}
+    ${CAT() ? sec("Your categories", `<div class="pts">${C.cats.sk.map(k => `<span><b>${k}</b></span>`).join("")}</div><div style="height:8px"></div><div class="pts">${C.cats.g.map(k => `<span><b>${k}</b></span>`).join("")}</div>
+      <p>In Cats mode every category counts the same. The app turns them into <b>cat points</b>: each stat is weighted by how much it varies among players a ${C.leagueTeams}-team league rosters, so one typical difference in any category is worth the same. FL, L, GA and GAA count against a player. SH%, GAA and SV% are weighted by volume, so a hot shooter with few shots barely moves them.</p>
+      <p>Cat points are scaled to sit close to your fantasy points, so projections, weekly totals, value over a free agent and trades all work the same way. Player cards show each player's strongest and weakest categories.</p>
+      <p>Two goalies carry ${C.cats.g.length} categories, so a good starting goalie is worth more here than in points.</p>${C.hasFaceoffs ? "" : "<p>Faceoff stats didn't load on today's update, so FW and FL count as zero.</p>"}`, true)
+    : sec("Your league's scoring", `${pts(C.skaterScoring)}<div style="height:8px"></div>${pts(C.goalieScoring)}
       <p>Hits and blocks matter a lot in your league. One goal is worth the same as ${f0(s.G / s.HIT)} hits, ${f1(s.G / s.BLK)} blocks or ${f0(s.G / s.SOG)} shots. A defenceman who hits and blocks a lot can outscore a 40-point winger.</p>
       <p>For goalies, one goal against cancels about ${f1(0.85 / 0.2)} saves, so a goalie who faces lots of shots still scores in a loss.</p>`, true)}
+    ${sec("Points, Cats and your teams", `<dl>
+      <dt>Points or Cats</dt><dd>The switch at the top re-ranks everything, from pickups to trades, by your points scoring or by categories. Each team remembers its own setting.</dd>
+      <dt>Teams</dt><dd>Keep up to ${C.maxTeams} teams, for example one per league. Tap a team's name at the top to switch, or <b>+ Team</b> to add one. Each team has its own roster, lineup, concept trades and hidden players. Rename or delete a team on its My team page.</dd>
+      <dt>League settings</dt><dd>League size and roster spots are shared by all teams.</dd></dl>`)}
     ${sec("The pages", `<dl>
       <dt>This week</dt><dd>Your weekly briefing: which teams play the most, the best pickups, goalie starts, who's hot or cold, and who's getting lucky. On Sundays it switches to next week.</dd>
       <dt>My team</dt><dd>Your roster loads from your league file. Tap a position ring to swap players between spots, like in Yahoo, or tap Best lineup to let the app choose. The app sets your best lineup, grades each position against a typical team in your league, lists strengths and weak spots, and suggests who to drop and who to add, both for the rest of the season and for this week's schedule.</dd>
@@ -2026,6 +2317,7 @@ function renderGuide() {
       <dt>Trade ideas</dt><dd>Each player card suggests a one-for-one trade that should look fair to the other manager, judged by the season numbers Yahoo shows, while your projections say you come out ahead. On your players it suggests who to target; on other players it suggests who to offer. It can't see other rosters, so check who owns the player first.</dd></dl>`)}
     ${sec("What the numbers mean", `<dl>
       <dt>Points (FP)</dt><dd>Fantasy points with your league's scoring.</dd>
+      <dt>Cat points (CP)</dt><dd>Categories turned into one number, in Cats mode. See "Your categories".</dd>
       <dt>Projected per game</dt><dd>What a player should score per game for the rest of the season. See "How projections work".</dd>
       <dt>Points left this season</dt><dd>Projected per game times the games left on his team's schedule. It assumes he plays every game.</dd>
       <dt>Value over a free agent</dt><dd>How many more points he'll score than the best player you could pick up for free at his position. With ${C.leagueTeams} teams starting ${slots}, that's the first player outside the starters. This is the fairest way to compare positions and judge trades. In trades, anyone below free-agent level counts as zero.</dd>
@@ -2040,7 +2332,7 @@ function renderGuide() {
       <li>Injuries, line changes and confirmed starting goalies. Check Yahoo or Daily Faceoff before you set your lineup.</li>
       <li>Yahoo positions for every player. Your roster's positions come from your league file. For anyone else it uses his NHL position, and you can fix it on his player card.</li>
       <li>Your league's rosters. Pickups and suggested moves assume players ranked outside the top ${C.leagueTeams * C.rosteredPerTeam} are available. Mark anyone who isn't, and the app will skip him.</li>
-      <li>Your phone and computer keep separate copies of My team, Compare and Trade.</li>
+      <li>Your phone and computer keep separate copies of your teams, Compare and Trade.</li>
       ${C.hasLast ? "" : "<li>Last season's stats didn't load on today's update, so projections use this season only.</li>"}
       ${C.hasRecent ? "" : "<li>Recent stats didn't load on today's update, so the Form lists are empty.</li>"}
       ${C.hasSchedule ? "" : "<li>Schedules didn't load on today's update, so weekly numbers are estimates.</li>"}</ul>`)}
@@ -2050,7 +2342,8 @@ function renderGuide() {
 }
 
 // ---------- start ----------
-renderWeek(); renderTeam(); renderRank(); renderCompare(); renderTrade(); renderGuide();
+applyMode(teams[cur].mode);
+renderCtx(); renderWeek(); renderTeam(); renderRank(); renderCompare(); renderTrade(); renderGuide();
 const saved = store.get("view", "week");
 go(VIEWS.includes(saved) ? saved : "week");
 </script>
@@ -2097,25 +2390,32 @@ def apply_league_file(league, skaters, goalies):
             set_count += 1
         elif not p:
             log(f"  {LEAGUE_FILE}: no current player named '{name}' (positions)")
-    team = league.get("myTeam") or {}
-    roster, ir = [], []
-    for key, out in (("roster", roster), ("ir", ir)):
-        for name in team.get(key, []) or []:
-            p = by_name.get(norm_name(name))
-            if p:
-                out.append(p["id"])
-            else:
-                log(f"  {LEAGUE_FILE}: no current player named '{name}' (myTeam.{key})")
-    for pid in ir:
-        if pid not in roster:
-            roster.append(pid)
-    version = ""
-    if roster:
-        import hashlib
-        version = hashlib.sha1(json.dumps([roster, ir]).encode()).hexdigest()[:10]
+    # "teams": up to 3 teams (name, focus "points" or "cats", roster, ir). "myTeam" still works as team 1.
+    file_teams = league.get("teams") or ([league["myTeam"]] if league.get("myTeam") else [])
+    out_teams = []
+    for i, team in enumerate(file_teams[:MAX_TEAMS]):
+        roster, ir = [], []
+        for key, out in (("roster", roster), ("ir", ir)):
+            for name in team.get(key, []) or []:
+                p = by_name.get(norm_name(name))
+                if p:
+                    out.append(p["id"])
+                else:
+                    log(f"  {LEAGUE_FILE}: no current player named '{name}' (team {i + 1} {key})")
+        for pid in ir:
+            if pid not in roster:
+                roster.append(pid)
+        version = ""
+        if roster:
+            import hashlib
+            version = hashlib.sha1(json.dumps([roster, ir]).encode()).hexdigest()[:10]
+        focus = "cat" if str(team.get("focus", "")).lower().startswith("cat") else "pts"
+        out_teams.append({"name": str(team.get("name") or ""), "focus": focus, "roster": roster, "ir": ir, "version": version})
+        log(f"  {LEAGUE_FILE}: team {i + 1}{' (' + team['name'] + ')' if team.get('name') else ''}: "
+            f"roster of {len(roster)} ({len(ir)} on IR), {'categories' if focus == 'cat' else 'points'}")
     if league:
-        log(f"  {LEAGUE_FILE}: Yahoo positions for {set_count} players, roster of {len(roster)} ({len(ir)} on IR)")
-    return {"roster": roster, "ir": ir, "version": version}
+        log(f"  {LEAGUE_FILE}: Yahoo positions for {set_count} players")
+    return out_teams
 
 
 def print_briefing(skaters, goalies, pulse, week, my_team):
@@ -2146,6 +2446,23 @@ def print_briefing(skaters, goalies, pulse, week, my_team):
     log("\n".join(lines))
 
 
+SK_VALUE_KEYS = ["fp", "fpS", "fpP", "fpg", "fpgS", "fpgP", "peri", "lastFpg", "recFpg", "prior", "proj",
+                 "rosFp", "wkFp", "nxtFp", "poFp", "vor", "rosVor", "rank", "projRank", "posRank", "gap"]
+G_VALUE_KEYS = ["fp", "fpg", "fpgs", "noWin", "lastFpgs", "recFpgs", "prior", "proj", "projTG",
+                "rosFp", "wkFp", "nxtFp", "poFp", "vor", "rosVor", "rank", "projRank"]
+
+
+def attach_cats(players, cat_players, keys, zfn):
+    by_id = {p["id"]: p for p in cat_players}
+    for p in players:
+        c = by_id.get(p["id"])
+        if not c:
+            continue
+        p["cat"] = {k: (round(c[k], 3) if isinstance(c.get(k), float) else c.get(k)) for k in keys if k in c}
+        if p["q"]:
+            p["cz"] = zfn(p)
+
+
 def build(raw, season_id, min_gp, out_dir, today=None, open_browser=True, league=None):
     today = today or local_now().date()
     teams, week = analyze_schedule(raw.get("schedules", {}), today)
@@ -2153,7 +2470,17 @@ def build(raw, season_id, min_gp, out_dir, today=None, open_browser=True, league
     goalies, repl_g = build_goalies(raw, teams, min_gp)
     repl["G"] = repl_g
     pulse = build_pulse(skaters, goalies, week)
-    my_team = apply_league_file(load_league_file() if league is None else league, skaters, goalies)
+
+    # Same players valued by categories (the app's Points / Cats switch)
+    cm = build_cat_model(raw, skaters, goalies)
+    sk_c, _ = build_skaters(raw, teams, min_gp, fp_fn=cm["sk_fn"])
+    go_c, _ = build_goalies(raw, teams, min_gp, fp_fn=cm["g_fn"])
+    pulse_cat = build_pulse(sk_c, go_c, week)
+    attach_cats(skaters, sk_c, SK_VALUE_KEYS, lambda p: cm["sk_z"](cm["cur"][p["id"]]))
+    attach_cats(goalies, go_c, G_VALUE_KEYS, lambda g: cm["g_z"](cm["gcur"][g["id"]], g["share"]))
+
+    my_teams = apply_league_file(load_league_file() if league is None else league, skaters, goalies)
+    my_team = my_teams[0] if my_teams else {"roster": [], "ir": [], "version": ""}
 
     os.makedirs(out_dir, exist_ok=True)
     write_csv(os.path.join(out_dir, "skaters.csv"), skaters, SKATER_CSV_COLS, "proj")
@@ -2166,7 +2493,9 @@ def build(raw, season_id, min_gp, out_dir, today=None, open_browser=True, league
         "week": week,
         "teams": teams,
         "pulse": pulse,
+        "pulseCat": pulse_cat,
         "myTeam": my_team,
+        "myTeams": my_teams,
         "config": {
             "skaterScoring": [[LEAGUE_LABELS[k], v] for k, v in SKATER_SCORING.items()],
             "goalieScoring": [[LEAGUE_LABELS[k], v] for k, v in GOALIE_SCORING.items()],
@@ -2177,6 +2506,8 @@ def build(raw, season_id, min_gp, out_dir, today=None, open_browser=True, league
             "repl": {k: round(v, 3) for k, v in repl.items()},
             "hasLast": bool(raw.get("lastSummary")), "hasRecent": bool(raw.get("recentSummary")),
             "hasSchedule": bool(raw.get("schedules")),
+            "cats": {"sk": [CAT_LABELS[k] for k in SKATER_CATS], "g": [CAT_LABELS[k] for k in GOALIE_CATS]},
+            "hasFaceoffs": bool(raw.get("faceoffs")), "maxTeams": MAX_TEAMS,
         },
         "skaters": slim(skaters),
         "goalies": slim(goalies),

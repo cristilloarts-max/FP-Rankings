@@ -52,6 +52,7 @@ jobs:
 
   deploy:
     needs: build
+    if: github.ref == 'refs/heads/main'   # test branches build only; main publishes
     runs-on: ubuntu-latest
     environment:
       name: github-pages
