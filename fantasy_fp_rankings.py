@@ -338,6 +338,9 @@ def merge_goalies(rows):
         for f in GOALIE_FIELDS:
             g[f] += num(r.get(f))
         add_teams(g, r.get("teamAbbrevs") or r.get("teamAbbrev"))
+    for g in goalies.values():
+        g["lossesAll"] = g["losses"] + g["otLosses"]
+        g["toiMin"] = (g["timeOnIce"] or g["gamesPlayed"] * 3600) / 60
     return goalies
 
 
@@ -388,6 +391,29 @@ def goalie_cat_amounts(p, m):
     }
 
 
+SK_RAW = ["goals", "assists", "plusMinus", "penaltyMinutes", "ppGoals", "ppAssists", "shGoals", "shAssists",
+          "gameWinningGoals", "shots", "totalFaceoffWins", "totalFaceoffLosses", "hits", "blockedShots"]
+G_RAW = ["wins", "lossesAll", "goalsAgainst", "saves", "shotsAgainst", "shutouts", "toiMin"]   # per start
+
+
+def proj_vec(keys, cur, last, rec, denom, base, prior_n, full_n, rec_min):
+    """Per-game (goalies: per-start) projection for each stat: this season, last season and recent form."""
+    rate = lambda l: {k: (l.get(k) or 0.0) / l[denom] for k in keys} if l and (l.get(denom) or 0) > 0 else None
+    rs, rl, rr = rate(cur), rate(last), rate(rec)
+    n_l = last[denom] if rl else 0
+    if n_l >= full_n:
+        prior = rl
+    elif n_l > 0:
+        prior = {k: (n_l * rl[k] + (full_n - n_l) * base[k]) / full_n for k in keys}
+    else:
+        prior = base
+    n = cur[denom] if rs else 0
+    out = {k: (n * (rs[k] if rs else 0.0) + prior_n * prior[k]) / (n + prior_n) for k in keys}
+    if rr and rec[denom] >= rec_min:
+        out = {k: (1 - RECENT_WEIGHT) * out[k] + RECENT_WEIGHT * rr[k] for k in keys}
+    return [round(out[k], 4) for k in keys]
+
+
 def build_cat_model(raw, skaters_fp, goalies_fp):
     """Weights per category from the players a league like yours actually rosters."""
     cur = merge_skaters(raw["summary"], raw["realtime"], raw.get("faceoffs", []))
@@ -436,21 +462,42 @@ def build_cat_model(raw, skaters_fp, goalies_fp):
         a = goalie_cat_amounts(p, m_g)
         return sum(w_g[k] * a[k] for k in GOALIE_CATS)
 
-    def sk_z(p):
-        """How far above or below a typical rostered skater he is in each category, per game."""
-        gp = p.get("gamesPlayed") or 0
-        a = skater_cat_amounts(p, m_sk)
-        return [round(div(a[k] / gp - sk_mean[k], sk_sd[k]), 1) if gp else None for k in SKATER_CATS]
-
-    def g_z(p, sh):
-        gs = p.get("gamesStarted") or 0
-        a = goalie_cat_amounts(p, m_g)
-        return [round(div(a[k] / gs * sh - g_mean[k], g_sd[k]), 1) if gs else None for k in GOALIE_CATS]
-
     fo = sum(l["totalFaceoffWins"] for l in lines)
     log(f"  categories: {len(lines)} skaters and {len(glines)} goalies set the weights"
         f" (faceoffs {'found' if fo else 'missing, so FW/FL count as zero'})")
-    return {"sk_fn": sk_fn, "g_fn": g_fn, "sk_z": sk_z, "g_z": g_z, "cur": cur, "gcur": gcur}
+    # ---- Projected per-game stats in each category (same blend as the points projections) ----
+    last = merge_skaters(raw.get("lastSummary", []), raw.get("lastRealtime", []), raw.get("lastFaceoffs", []))
+    rec = merge_skaters(raw.get("recentSummary", []), raw.get("recentRealtime", []), raw.get("recentFaceoffs", []))
+    glast, grec = merge_goalies(raw.get("lastGoalies", [])), merge_goalies(raw.get("recentGoalies", []))
+    by_pos = {}
+    for p in pool:
+        l = cur.get(p["id"])
+        if l and l["gamesPlayed"] > 0:
+            by_pos.setdefault(p["pos"], []).append({k: l[k] / l["gamesPlayed"] for k in SK_RAW})
+    sk_base = {pos: {k: statistics.mean(r[k] for r in rs) * (1.0 if k == "totalFaceoffLosses" else 0.85) for k in SK_RAW}
+               for pos, rs in by_pos.items()}
+    g_rates = [{k: l[k] / l["gamesStarted"] for k in G_RAW} for l in glines]
+    g_base = {k: (statistics.mean(r[k] for r in g_rates) if g_rates else 0.0)
+                 * {"wins": 0.9, "shutouts": 0.9, "goalsAgainst": 1.05}.get(k, 1.0) for k in G_RAW}
+
+    def sk_cr(pid, pos):
+        base = sk_base.get(pos) or sk_base.get("C") or {k: 0.0 for k in SK_RAW}
+        return proj_vec(SK_RAW, cur.get(pid), last.get(pid), rec.get(pid), "gamesPlayed", base, PRIOR_GAMES, 20, 3)
+
+    def g_cr(pid):
+        return proj_vec(G_RAW, gcur.get(pid), glast.get(pid), grec.get(pid), "gamesStarted", g_base, GOALIE_PRIOR_STARTS, 10, 2)
+
+    app = {
+        "sk": {"keys": SKATER_CATS, "labels": [CAT_LABELS[k] for k in SKATER_CATS],
+               "mean": [round(sk_mean[k], 5) for k in SKATER_CATS], "sd": [round(sk_sd[k], 5) for k in SKATER_CATS],
+               "w": [round(w_sk[k], 5) for k in SKATER_CATS]},
+        "g": {"keys": GOALIE_CATS, "labels": [CAT_LABELS[k] for k in GOALIE_CATS],
+              "mean": [round(g_mean[k], 5) for k in GOALIE_CATS], "sd": [round(g_sd[k], 5) for k in GOALIE_CATS],
+              "w": [round(w_g[k], 5) for k in GOALIE_CATS]},
+        "crKeys": {"sk": SK_RAW, "g": G_RAW},
+        "m": {"sh": round(m_sk["sh"], 5), "gaa": round(m_g["gaa"], 5), "sv": round(m_g["sv"], 5)},
+    }
+    return {"sk_fn": sk_fn, "g_fn": g_fn, "sk_cr": sk_cr, "g_cr": g_cr, "app": app}
 
 
 # ===========================================================================
@@ -1097,6 +1144,24 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .cz{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
   .cz span{font-size:12.5px;font-weight:700;padding:3px 8px;border-radius:8px;background:var(--heat0);color:var(--muted)}
   .cz .hi{background:var(--blue-soft);color:var(--blue)} .cz .lo{background:var(--red-soft);color:var(--red)}
+  /* categories team view */
+  .tsum div.lose b{color:var(--red)}
+  .cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:6px}
+  .ctile{background:var(--surface);border-radius:12px;padding:8px 9px 7px;border-top:3px solid var(--line);min-width:0}
+  .ctile .cl{display:flex;justify-content:space-between;gap:4px;font-size:11px;font-weight:700;letter-spacing:.02em;color:var(--muted)}
+  .ctile b{display:block;font:800 22px/1.05 var(--display);margin-top:2px}
+  .ctile small{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ctile.win{border-top-color:var(--blue)} .ctile.win b{color:var(--blue)}
+  .ctile.lose{border-top-color:var(--red)} .ctile.lose b{color:var(--red)}
+  .ctile.close{border-top-color:var(--gold)}
+  .ctile .flip{color:var(--blue)} .ctile .flip.down{color:var(--red)}
+  .cgh{font-size:12px;font-weight:700;color:var(--muted);margin:12px 0 6px;letter-spacing:.02em}
+  .cleg{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:10px}
+  .cleg i{display:inline-block;width:12px;height:3px;border-radius:2px;margin-right:5px;vertical-align:3px}
+  .czr{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+  .czr span{font-size:11px;font-weight:700;padding:1px 6px;border-radius:6px;background:var(--blue-soft);color:var(--blue)}
+  .czr .lo{background:var(--red-soft);color:var(--red)} .czr .avg{background:var(--heat0);color:var(--muted)}
+  .pc.swing li{border-left-color:var(--gold)}
   [hidden]{display:none !important}
 
   @media (min-width:900px){
@@ -1324,13 +1389,14 @@ document.addEventListener("click", e => {
 
 // Category strengths and weaknesses, per game, against a typical rostered player
 function catProfile(p) {
-  if (!CAT() || !Array.isArray(p.cz)) return "";
-  const labels = isG(p) ? C.cats.g : C.cats.sk;
-  const xs = labels.map((l, i) => [l, p.cz[i]]).filter(([l, z]) => !nz(z) && (C.hasFaceoffs || (l !== "FW" && l !== "FL")));
+  const z = CAT() && CM ? catZ(p) : null;
+  if (!z) return "";
+  const labels = catM(p).labels;
+  const xs = labels.map((l, i) => [l, z[i]]).filter(([l, z]) => !nz(z) && (C.hasFaceoffs || (l !== "FW" && l !== "FL")));
   const hi = xs.filter(([, z]) => z >= 0.5).sort((a, b) => b[1] - a[1]);
   const lo = xs.filter(([, z]) => z <= -0.5).sort((a, b) => a[1] - b[1]);
   const chip = ([l, z], c) => `<span class="${c}">${esc(l)} ${sgn(z, f1)}</span>`;
-  return `<div class="kv"><div style="display:block"><span>Category profile (per game, vs a typical rostered ${isG(p) ? "goalie" : "skater"})</span>
+  return `<div class="kv"><div style="display:block"><span>Category profile (projected ${isG(p) ? "per team game" : "per game"}, vs a typical rostered ${isG(p) ? "goalie" : "skater"})</span>
     ${hi.length ? `<div class="cz">${hi.map(x => chip(x, "hi")).join("")}</div>` : ""}
     ${lo.length ? `<div class="cz">${lo.map(x => chip(x, "lo")).join("")}</div>` : ""}
     ${!hi.length && !lo.length ? `<div class="cz"><span>Close to average in every category</span></div>` : ""}</div></div>`;
@@ -1893,6 +1959,7 @@ function refreshDerived() {
   maxSplit = Math.max(0.01, ...SK.filter(p => p.q).map(p => Math.max(0, p.fpgS) + Math.max(0, p.fpgP)));
   ALL = [...P.values()].sort((a, b) => (b.rosFp || 0) - (a.rosFp || 0));
   LG = calcLG();
+  LGC = calcLGC();
 }
 
 const nxtFocus = () => D.week.focus === "next";
@@ -1985,21 +2052,23 @@ function prosCons(L, rosterIds) {
 
 function seasonMoves(L) {
   const benchIds = new Set(L.bench.map(p => p.id));
+  const W = hasCats() ? needW(catBoard(L.slots.filter(x => x.p).map(x => x.p))) : null;
+  const sv = p => W && p.cr ? needVal(p, W) * (p.ros || 0) : p.rosFp;
   const roster = team.filter(id => !irSet.has(id)).map(id => P.get(id)).filter(Boolean);
   const drops = roster.slice().sort((a, b) => (a.rosVor || 0) - (b.rosVor || 0)).slice(0, 6);
   const used = new Set(), out = [];
   for (const d of drops) {
     const pool = (isG(d) ? GO : SK).filter(c => isAvail(c) && !used.has(c.id) && (isG(d) || benchIds.has(d.id) || eligOf(c).some(x => eligOf(d).includes(x))));
-    const c = pool.sort((a, b) => b.rosFp - a.rosFp)[0];
+    const c = pool.sort((a, b) => sv(b) - sv(a))[0];
     if (!c) continue;
-    const gain = c.rosFp - d.rosFp;
+    const gain = sv(c) - sv(d);
     if (gain < 8) continue;
     used.add(c.id);
     const why = [`${esc(c.name)} projects ${f2(projTG(c))} a game against ${f2(projTG(d))}.`];
     if (isG(d) && c.share - d.share >= 0.1) why.push(`He starts ${pct(c.share * 100)} of his team's games, ${esc(d.name)} ${pct(d.share * 100)}.`);
     if (!isG(d) && c.peri - d.peri >= 10) why.push(`More of his ${U().p} come from ${U().peri} (${pct(c.peri)}), so they're steadier.`);
     if ((c.ros || 0) - (d.ros || 0) >= 2) why.push(`His team has ${(c.ros || 0) - (d.ros || 0)} more games left.`);
-    out.push({ d, c, gain, unit: `${U().p} rest of season`, why: why.join(" ") });
+    out.push({ d, c, gain, unit: W ? "cat points rest of season, weighted to your needs" : `${U().p} rest of season`, why: why.join(" ") + (W ? needWhy(c, d, W) : "") });
   }
   return out.sort((a, b) => b.gain - a.gain).slice(0, 5);
 }
@@ -2007,21 +2076,23 @@ function seasonMoves(L) {
 function weekMoves(L) {
   const k = wkKey(), gk = gKey();
   const benchIds = new Set(L.bench.map(p => p.id));
+  const W = hasCats() ? needW(catBoard(L.slots.filter(x => x.p).map(x => x.p))) : null;
+  const wv = p => W && p.cr ? needVal(p, W) * ((nxtFocus() ? p.nxt : p.wk) || 0) : (p[k] || 0);
   const roster = team.filter(id => !irSet.has(id)).map(id => P.get(id)).filter(Boolean);
   const byVor = roster.slice().sort((a, b) => (a.rosVor || 0) - (b.rosVor || 0));
-  const droppable = byVor.slice(0, Math.max(2, Math.ceil(roster.length / 3))).sort((a, b) => (a[k] || 0) - (b[k] || 0));
+  const droppable = byVor.slice(0, Math.max(2, Math.ceil(roster.length / 3))).sort((a, b) => wv(a) - wv(b));
   const used = new Set(), out = [];
   for (const d of droppable) {
     const pool = (isG(d) ? GO : SK).filter(c => isAvail(c) && !used.has(c.id) && (isG(d) || benchIds.has(d.id) || eligOf(c).some(x => eligOf(d).includes(x))));
-    const c = pool.sort((a, b) => (b[k] || 0) - (a[k] || 0))[0];
+    const c = pool.sort((a, b) => wv(b) - wv(a))[0];
     if (!c) continue;
-    const gain = (c[k] || 0) - (d[k] || 0);
+    const gain = wv(c) - wv(d);
     if (gain < 3) continue;
     used.add(c.id);
     const why = isG(d)
       ? `About ${f1(nxtFocus() ? c.nxtStarts : c.wkStarts)} starts for ${esc(c.name)}, against ${f1(nxtFocus() ? d.nxtStarts : d.wkStarts)} for ${esc(d.name)}.`
       : `${esc(c.name)} has ${plural(c[gk] || 0, "game")} ${nxtFocus() ? "next week" : "left this week"}, ${esc(d.name)} has ${d[gk] || 0}. It's a short-term stream: swap back later if you like.`;
-    out.push({ d, c, gain, unit: nxtFocus() ? `${U().p} next week` : `${U().p} this week`, why });
+    out.push({ d, c, gain, unit: (nxtFocus() ? `${U().p} next week` : `${U().p} this week`) + (W ? ", weighted to your needs" : ""), why: why + (W ? needWhy(c, d, W) : "") });
   }
   return out.sort((a, b) => b.gain - a.gain).slice(0, 4);
 }
@@ -2103,11 +2174,11 @@ function conceptHTML(Lcur) {
   return `
     <h2 class="sub2">Trades in this concept <span class="cnt">${concept.length}</span></h2>
     <div class="ctrades">${trades}</div>
-    <div class="tsum">
+    ${hasCats() ? conceptCatsHTML(Lcur, Lc) : `<div class="tsum">
       <div><b>${f0(m1.week)}</b><span>${U().p} in a typical week</span>${delta(Math.round(m1.week) - Math.round(m0.week))}</div>
       <div><b>${f0(SLOTS.reduce((s, sl) => s + (LG[sl] || 0), 0) * GPW)}</b><span>typical team in your league</span></div>
       <div><b>${f0(m1.focus)}</b><span>${nxtFocus() ? "projected next week" : "left this week"}</span>${delta(Math.round(m1.focus) - Math.round(m0.focus))}</div>
-    </div>
+    </div>`}
     <div class="verdict" style="margin-top:14px">
       <div class="vh ${verdictCls}" style="margin-top:0">${m1.vor - m0.vor > 5 ? `Better by ${Math.round(m1.vor) - Math.round(m0.vor)} ${U().p}` : m1.vor - m0.vor < -5 ? `Worse by ${Math.round(m0.vor) - Math.round(m1.vor)} ${U().p}` : "About the same"}</div>
       <p class="vs">Value your starting lineup adds over free agents for the rest of the season, now versus with these trades.</p>
@@ -2133,6 +2204,23 @@ function conceptHTML(Lcur) {
     <div class="actions" style="margin-top:18px"><button class="btn primary" data-capply>${confirmApply ? "Tap again to confirm" : "Make this my team"}</button><button class="btn ghost" data-cclear>Clear concept</button></div>
     <p class="hint">"Make this my team" updates My team on this device. Make the trade in Yahoo too, and tell Claude so your league file matches.</p>`;
 }
+function conceptCatsHTML(Lcur, Lc) {
+  const st = L => L.slots.filter(x => x.p).map(x => x.p);
+  const r0 = catBoard(st(Lcur)), r1 = catBoard(st(Lc));
+  const by0 = Object.fromEntries(r0.map(x => [x.k, x]));
+  const dl = (a, b) => { const d = b - a; return `<em class="dl ${d > 0 ? "up" : d < 0 ? "down" : ""}">${d ? `${sgn(d, f0)} vs now` : "same as now"}</em>`; };
+  const dlLose = (a, b) => { const d = b - a; return `<em class="dl ${d < 0 ? "up" : d > 0 ? "down" : ""}">${d ? `${sgn(d, f0)} vs now` : "same as now"}</em>`; };
+  const rank = { win: 2, close: 1, lose: 0 };
+  const up = r1.filter(x => by0[x.k] && rank[x.st] > rank[by0[x.k].st]).map(x => x.lab);
+  const down = r1.filter(x => by0[x.k] && rank[x.st] < rank[by0[x.k].st]).map(x => x.lab);
+  return `<div class="tsum">
+      <div><b>${cnt(r1, "win")}</b><span>categories you'd win</span>${dl(cnt(r0, "win"), cnt(r1, "win"))}</div>
+      <div><b>${cnt(r1, "close")}</b><span>too close to call</span>${dl(cnt(r0, "close"), cnt(r1, "close")).replace(/ (up|down)"/, '"')}</div>
+      <div class="lose"><b>${cnt(r1, "lose")}</b><span>categories you'd lose</span>${dlLose(cnt(r0, "lose"), cnt(r1, "lose"))}</div>
+    </div>
+    ${up.length || down.length ? `<ul class="facts">${up.length ? `<li>Gets better in ${up.join(", ")}.</li>` : ""}${down.length ? `<li>Gets worse in ${down.join(", ")}.</li>` : ""}</ul>` : `<p class="hint">No category changes from win, close or loss.</p>`}
+    <h2 class="sub2">Categories <span class="cnt">concept team, typical week</span></h2>${catGridHTML(r1, r0)}`;
+}
 function applyConcept() {
   const K = conceptIds();
   team = [...K.active, ...K.ir]; irSet = new Set(K.ir);
@@ -2140,6 +2228,143 @@ function applyConcept() {
   concept = []; saveTeam(); confirmApply = false;
   teamState.tab = "lineup"; renderTeam(); renderWeek();
   toast("My team updated");
+}
+
+// ---------- categories: team view ----------
+const CM = C.catModel || null;
+const hasCats = () => CAT() && !!CM;
+const isFO = k => k === "faceoffWins" || k === "faceoffLosses";
+const crOf = p => {
+  if (!CM || !p || !Array.isArray(p.cr)) return null;
+  const o = {}; (isG(p) ? CM.crKeys.g : CM.crKeys.sk).forEach((k, i) => { o[k] = p.cr[i] || 0; }); return o;
+};
+// Per game for skaters, per TEAM game for goalies (per start x share of starts)
+function perGame(p) {
+  const r = crOf(p); if (!r) return null;
+  if (!isG(p)) return r;
+  const s = p.share || 0, o = { gs: s }; for (const k in r) o[k] = r[k] * s; return o;
+}
+// Each category as a "good is positive" amount, matching the build's weights
+const AMT = {
+  goals: r => r.goals, assists: r => r.assists, plusMinus: r => r.plusMinus, penaltyMinutes: r => r.penaltyMinutes,
+  ppGoals: r => r.ppGoals, ppAssists: r => r.ppAssists, shGoals: r => r.shGoals, shAssists: r => r.shAssists,
+  gameWinningGoals: r => r.gameWinningGoals, shots: r => r.shots, shootingPct: r => r.goals - CM.m.sh * r.shots,
+  faceoffWins: r => r.totalFaceoffWins, faceoffLosses: r => -r.totalFaceoffLosses, hits: r => r.hits, blockedShots: r => r.blockedShots,
+  gamesStarted: r => r.gs, wins: r => r.wins, losses: r => -r.lossesAll, goalsAgainst: r => -r.goalsAgainst,
+  gaa: r => CM.m.gaa * r.toiMin / 60 - r.goalsAgainst, saves: r => r.saves, shotsAgainst: r => r.shotsAgainst,
+  savePct: r => r.saves - CM.m.sv * r.shotsAgainst, shutouts: r => r.shutouts,
+};
+const catM = p => isG(p) ? CM.g : CM.sk;
+function catAmts(p) { const r = perGame(p); return r ? catM(p).keys.map(k => AMT[k] ? AMT[k](r) : 0) : null; }
+// How far above or below a typical rostered player, per game, in each category
+function catZ(p) { const a = catAmts(p), M = a && catM(p); return a ? a.map((v, i) => M.sd[i] ? (v - M.mean[i]) / M.sd[i] : 0) : null; }
+// How a team total is shown for each category
+const TOT = {
+  shootingPct: { num: "goals", den: "shots", mult: 100, fmt: v => f1(v) + "%" },
+  gaa: { num: "goalsAgainst", den: "toiMin", mult: 60, fmt: f2, low: true },
+  savePct: { num: "saves", den: "shotsAgainst", mult: 1, fmt: f3 },
+  faceoffWins: { sum: "totalFaceoffWins" }, faceoffLosses: { sum: "totalFaceoffLosses", low: true },
+  gamesStarted: { sum: "gs" }, losses: { sum: "lossesAll", low: true }, goalsAgainst: { sum: "goalsAgainst", low: true },
+};
+const totDef = k => TOT[k] || { sum: k };
+const fmtCat = (k, v) => nz(v) ? DASH : (totDef(k).fmt || (Math.abs(v) >= 20 ? f0 : f1))(v);
+function totalsFrom(S) {
+  const out = {};
+  ["sk", "g"].forEach(grp => CM[grp].keys.forEach(k => {
+    const d = totDef(k);
+    out[k] = d.num ? (S[d.den] ? S[d.num] / S[d.den] * d.mult : null) : (S[d.sum] || 0);
+  }));
+  return out;
+}
+// Weekly totals for a lineup's starters, in a typical week
+function catTotals(players) {
+  const S = {};
+  players.forEach(p => { const r = perGame(p); if (r) for (const k in r) S[k] = (S[k] || 0) + r[k] * GPW; });
+  return totalsFrom(S);
+}
+// The typical team: every slot filled by the average player who'd start there across the league
+let LGC = null;
+function calcLGC() {
+  if (!CM) return null;
+  const T = C.leagueTeams, used = new Set(), groups = [];
+  const q = SK.filter(p => p.q && p.cr);
+  ["C", "LW", "RW", "D"].forEach(pos => {
+    const top = q.filter(p => p.pos === pos).sort((a, b) => b.proj - a.proj).slice(0, T * (C.slots[pos] || 0));
+    top.forEach(p => used.add(p.id)); groups.push(top);
+  });
+  groups.push(q.filter(p => !used.has(p.id)).sort((a, b) => b.proj - a.proj).slice(0, T * (C.slots.Util || 0)));
+  groups.push(GO.filter(g => g.q && g.cr).sort((a, b) => b.projTG - a.projTG).slice(0, T * (C.slots.G || 0)));
+  const S = {};
+  groups.forEach(ps => ps.forEach(p => { const r = perGame(p); for (const k in r) S[k] = (S[k] || 0) + r[k] * GPW / T; }));
+  return totalsFrom(S);
+}
+// "Too close to call" band for each category, about half a typical team-to-team difference
+function catThr(grp, i, k) {
+  if (k === "shootingPct") return 0.6;
+  if (k === "gaa") return 0.12;
+  if (k === "savePct") return 0.004;
+  const n = grp === "g" ? (C.slots.G || 2) : SLOTS.filter(s => s !== "G").length;
+  return Math.max(0.05, 0.5 * CM[grp].sd[i] * Math.sqrt(n) * GPW);
+}
+// Each category: your total, a typical team's, and whether you'd win, lose or it's close
+function catBoard(players) {
+  const mine = catTotals(players), lg = LGC || {}, rows = [];
+  ["sk", "g"].forEach(grp => CM[grp].keys.forEach((k, i) => {
+    if (!C.hasFaceoffs && isFO(k)) return;
+    const d = totDef(k), a = mine[k], b = lg[k], lab = CM[grp].labels[i];
+    if (nz(b)) return;
+    if (nz(a)) { rows.push({ k, grp, i, lab, a, b, edge: -9, st: "lose" }); return; }
+    const edge = (d.low ? b - a : a - b) / catThr(grp, i, k);
+    rows.push({ k, grp, i, lab, a, b, edge, st: edge > 1 ? "win" : edge < -1 ? "lose" : "close" });
+  }));
+  return rows;
+}
+const cnt = (rows, st) => rows.filter(r => r.st === st).length;
+function catScoreHTML(rows) {
+  return `<div class="tsum"><div><b>${cnt(rows, "win")}</b><span>categories you'd win</span></div><div><b>${cnt(rows, "close")}</b><span>too close to call</span></div><div class="lose"><b>${cnt(rows, "lose")}</b><span>categories you'd lose</span></div></div>
+    <p class="hint">Your starters against a typical team in a ${C.leagueTeams}-team league, over a typical week (${GPW} games each).</p>`;
+}
+function catGridHTML(rows, before) {
+  const prev = before ? Object.fromEntries(before.map(x => [x.k, x])) : null;
+  const word = { win: "win", lose: "loss", close: "close" };
+  const tile = r => {
+    const p = prev && prev[r.k];
+    const flip = p && p.st !== r.st ? `<span class="flip ${["win", "close", "lose"].indexOf(r.st) > ["win", "close", "lose"].indexOf(p.st) ? "down" : ""}">was ${word[p.st]}</span>` : "";
+    return `<div class="ctile ${r.st}"><span class="cl"><span>${esc(r.lab)}</span>${flip}</span><b>${fmtCat(r.k, r.a)}</b><small>${prev && p ? `now ${fmtCat(r.k, p.a)}` : `avg ${fmtCat(r.k, r.b)}`}</small></div>`;
+  };
+  const part = grp => { const xs = rows.filter(r => r.grp === grp); return xs.length ? `<div class="cgh">${grp === "sk" ? "Skaters" : "Goalies"}</div><div class="cgrid">${xs.map(tile).join("")}</div>` : ""; };
+  return `${part("sk")}${part("g")}
+    <div class="cleg"><span><i style="background:var(--blue)"></i>You'd win</span><span><i style="background:var(--gold)"></i>Close</span><span><i style="background:var(--red)"></i>You'd lose</span>${prev ? "" : "<span>avg = typical team</span>"}</div>`;
+}
+// Small chips: the categories a player helps (blue) or hurts (red) most
+function catChips(p) {
+  const z = catZ(p); if (!z) return "";
+  const M = catM(p);
+  const xs = M.labels.map((l, i) => [l, z[i], M.keys[i]]).filter(x => C.hasFaceoffs || !isFO(x[2]));
+  const hi = xs.filter(x => x[1] >= 0.5).sort((a, b) => b[1] - a[1]).slice(0, 2);
+  const lo = xs.filter(x => x[1] <= -0.75).sort((a, b) => a[1] - b[1]).slice(0, 1);
+  if (!hi.length && !lo.length) return `<span class="czr"><span class="avg">Average across the board</span></span>`;
+  return `<span class="czr">${hi.map(x => `<span>${esc(x[0])} ${sgn(x[1], f1)}</span>`).join("")}${lo.map(x => `<span class="lo">${esc(x[0])} ${sgn(x[1], f1)}</span>`).join("")}</span>`;
+}
+// Weight each category by how much you need it: swing categories most, ones you've won or lost already least
+function needW(rows) {
+  const w = {};
+  rows.forEach(r => { w[r.k] = r.st === "close" ? 1.5 : r.st === "lose" ? (r.edge < -4 ? 0.3 : 1.25) : (r.edge > 3 ? 0.4 : 0.8); });
+  return w;
+}
+function needVal(p, W) {
+  const a = catAmts(p); if (!a) return 0;
+  const M = catM(p);
+  return a.reduce((s, v, i) => s + (W[M.keys[i]] ?? 1) * M.w[i] * v, 0);
+}
+// Which needed categories a swap helps or hurts
+function needWhy(c, d, W) {
+  const zc = catZ(c), zd = catZ(d); if (!zc || !zd) return "";
+  const M = catM(c);
+  const xs = M.keys.map((k, i) => ({ l: M.labels[i], k, d: zc[i] - zd[i], w: W[k] ?? 1 })).filter(x => C.hasFaceoffs || !isFO(x.k));
+  const up = xs.filter(x => x.w >= 1 && x.d >= 0.4).sort((a, b) => b.d * b.w - a.d * a.w).slice(0, 3).map(x => x.l);
+  const dn = xs.filter(x => x.w >= 1 && x.d <= -0.6).sort((a, b) => a.d * a.w - b.d * b.w).slice(0, 2).map(x => x.l);
+  return (up.length ? ` Helps categories you need: ${up.join(", ")}.` : "") + (dn.length ? ` Costs some ${dn.join(" and ")}.` : "");
 }
 
 function slotRow(label, p, key, L) {
@@ -2150,9 +2375,65 @@ function slotRow(label, p, key, L) {
     : `<span class="slot s-${label}">${label}</span>`;
   const attrs = state === "target" ? `data-swap="${key}"` : !mv && p ? `data-pid="${p.id}"` : "";
   if (!p) return `<div class="row slotrow empty-slot ${state}" ${attrs}>${ring}<span class="who"><b class="muted">Empty</b><span class="meta">${state === "target" ? "Tap to move him here" : `Add a ${label === "Util" ? "skater" : label} below`}</span></span></div>`;
+  if (hasCats()) {
+    const g = isG(p), n = g ? (nxtFocus() ? p.nxtStarts : p.wkStarts) : p[gKey()];
+    return `<div class="row slotrow ${state}" ${attrs}>${ring}
+    <span class="who"><b>${esc(p.name)}</b>${meta(p)}${catChips(p)}</span>
+    <span class="val"><b>${nz(n) ? DASH : g ? f1(n) : n}</b><small>${state === "target" ? "Tap to swap" : `${g ? "starts" : n === 1 ? "game" : "games"}${nxtFocus() ? " next wk" : " left"}`}</small></span></div>`;
+  }
   return `<div class="row slotrow ${state}" ${attrs}>${ring}
     <span class="who"><b>${esc(p.name)}</b>${meta(p)}</span>
     <span class="val"><b>${f2(projTG(p))}</b><small>${state === "target" ? "Tap to swap" : nz(p[gKey()]) ? "" : plural(p[gKey()], "game") + (nxtFocus() ? " next wk" : " left")}</small></span></div>`;
+}
+
+function catReportHTML(L) {
+  const starters = L.slots.filter(x => x.p).map(x => x.p);
+  const rows = catBoard(starters);
+  const nameL = p => `<button class="lnk" data-pid="${p.id}">${esc(p.name)}</button>`;
+  const list = xs => xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs[xs.length - 1];
+  const pros = [], swing = [], cons = [];
+  const win = rows.filter(r => r.st === "win").sort((a, b) => b.edge - a.edge);
+  const close = rows.filter(r => r.st === "close").sort((a, b) => a.edge - b.edge);
+  const lose = rows.filter(r => r.st === "lose").sort((a, b) => a.edge - b.edge);
+  const safe = win.filter(r => r.edge >= 3 && !totDef(r.k).low);   // a big lead in GA or L isn't something to trade
+  const ahead = win.filter(r => !safe.includes(r));
+  if (ahead.length) pros.push(`You're ahead in ${list(ahead.map(r => r.lab))}.`);
+  if (safe.length) pros.push(`Comfortably ahead in ${list(safe.map(r => r.lab))}. You have room to trade some of that away to fix a weak spot.`);
+  // Who on your roster leads a category, and the best probable free agent for one
+  const avail = (grp) => (grp === "g" ? GO : SK).filter(isAvail).sort((a, b) => projTG(b) - projTG(a)).slice(0, 60);
+  const bestFor = (r, ps) => ps.map(p => ({ p, z: (catZ(p) || [])[r.i] })).filter(x => !nz(x.z));
+  close.forEach(r => {
+    const fa = bestFor(r, avail(r.grp)).sort((a, b) => b.z - a.z)[0];
+    swing.push(`<b>${esc(r.lab)}</b>: ${fmtCat(r.k, r.a)} against ${fmtCat(r.k, r.b)} for a typical team.${fa && fa.z >= 0.75 ? ` A small upgrade flips it. Best pickup for it: ${nameL(fa.p)}.` : ""}`);
+  });
+  // Goalie volume categories rise and fall together with starts: one note, one fix
+  const VOL = ["gamesStarted", "wins", "saves", "shotsAgainst"];
+  const vol = lose.filter(r => VOL.includes(r.k));
+  if (vol.length >= 2) {
+    const gs = rows.find(r => r.k === "gamesStarted");
+    const gAvail = avail("g").filter(g => g.share >= 0.5).sort((a, b) => b.share - a.share || projTG(b) - projTG(a))[0];
+    cons.push(`<b>${list(vol.map(r => r.lab))}</b>: your goalies don't start enough${gs ? ` (about ${f1(gs.a)} starts a week against ${f1(gs.b)} for a typical team)` : ""}. These rise together, so one goalie who starts more fixes ${vol.length > 2 ? "all of them" : "both"}.`
+      + (gAvail ? ` Best pickup: ${nameL(gAvail)}, who starts ${pct(gAvail.share * 100)} of his team's games.` : ""));
+  }
+  lose.filter(r => !(vol.length >= 2 && VOL.includes(r.k))).forEach(r => {
+    const grpPlayers = starters.filter(p => (r.grp === "g") === isG(p));
+    const hurt = bestFor(r, grpPlayers).filter(x => x.z <= -0.5).sort((a, b) => a.z - b.z).slice(0, 2).map(x => nameL(x.p));
+    const fa = bestFor(r, avail(r.grp)).sort((a, b) => b.z - a.z)[0];
+    const punt = r.edge < -4;
+    cons.push(`<b>${esc(r.lab)}</b>: ${fmtCat(r.k, r.a)} against ${fmtCat(r.k, r.b)} for a typical team.`
+      + (hurt.length ? ` Pulling it down: ${list(hurt)}.` : "")
+      + (punt ? " That's a big gap. You could punt it and put your moves into categories you can win." : fa && fa.z >= 0.75 ? ` Best pickup for it: ${nameL(fa.p)}.` : ""));
+  });
+  // Keep the roster notes that still apply in a categories league
+  const { pros: p0, cons: c0 } = prosCons(L);
+  const keep = x => !/^(strong:|weak:|peri$)/.test(x.k);
+  p0.filter(keep).forEach(x => pros.push(x.t)); c0.filter(keep).forEach(x => cons.push(x.t));
+  const ul = (cls, xs, empty) => xs.length ? `<ul class="pc ${cls}">${xs.map(t => `<li>${t}</li>`).join("")}</ul>` : `<p class="hint">${empty}</p>`;
+  return `${catScoreHTML(rows)}
+    <h2 class="sub2">Strengths</h2>${ul("pro", pros, "Nothing stands out yet.")}
+    <h2 class="sub2">Swing categories <span class="cnt">${close.length}</span></h2>${ul("swing", swing, "No categories are close. You're clearly ahead or behind in each one.")}
+    <h2 class="sub2">Weak spots <span class="cnt">${lose.length} categories</span></h2>${ul("con", cons, "No weak spots found. Nice.")}
+    <p class="hint" style="margin-top:12px">Pickups are players probably available in your league. Moves ranks swaps by the categories you need most.</p>`;
 }
 
 function renderTeam() {
@@ -2169,7 +2450,8 @@ function renderTeam() {
     const mineWk = starters.reduce((s, p) => s + projTG(p), 0) * GPW;
     const lgWk = SLOTS.reduce((s, sl) => s + (LG[sl] || 0), 0) * GPW;
     const thisWk = starters.reduce((s, p) => s + (p[wkKey()] || 0), 0);
-    body = `<div class="tsum"><div><b>${f0(mineWk)}</b><span>${U().p} in a typical week</span></div><div><b>${f0(lgWk)}</b><span>typical team in your league</span></div><div><b>${f0(thisWk)}</b><span>${nxtFocus() ? "projected next week" : "left this week"}</span></div></div>
+    const rows = hasCats() ? catBoard(starters) : null;
+    body = `${rows ? `${catScoreHTML(rows)}<h2 class="sub2">Categories <span class="cnt">your total in a typical week</span></h2>${catGridHTML(rows)}` : `<div class="tsum"><div><b>${f0(mineWk)}</b><span>${U().p} in a typical week</span></div><div><b>${f0(lgWk)}</b><span>typical team in your league</span></div><div><b>${f0(thisWk)}</b><span>${nxtFocus() ? "projected next week" : "left this week"}</span></div></div>`}
       ${teamState.moving ? `<div class="movebar"><span>Moving <b>${esc(keyPlayer(L, teamState.moving).name)}</b>. Tap a highlighted spot.</span><button class="btn" data-cancelmove>Cancel</button></div>` : ""}
       <div class="sub2 sbar"><h2>Starters</h2>${L.manual ? `<button class="btn ghost small" data-autolineup>Best lineup</button>` : `<span class="cnt">Best lineup</span>`}</div>
       <div class="list">${L.slots.map((x, i) => slotRow(x.s, x.p, "S" + i, L)).join("")}</div>
@@ -2180,6 +2462,8 @@ function renderTeam() {
       <p class="hint" style="margin-top:14px">Tap a position ring to move a player, then tap where he should go. Only spots he can play light up. Tap a name to open his player card.</p>`;
   } else if (teamState.tab === "concept") {
     body = conceptHTML(L);
+  } else if (teamState.tab === "report" && hasCats()) {
+    body = catReportHTML(L);
   } else if (teamState.tab === "report") {
     const { pros: pros0, cons: cons0 } = prosCons(L);
     const pros = pros0.map(x => x.t), cons = cons0.map(x => x.t);
@@ -2190,7 +2474,7 @@ function renderTeam() {
     const ms = teamState.moves === "season" ? seasonMoves(L) : weekMoves(L);
     body = `<div style="margin:16px 0 4px">${seg("tmoves", [["season", "Rest of season"], ["week", nxtFocus() ? "Next week" : "This week"]], teamState.moves)}</div>
       <p class="hint">${teamState.moves === "season"
-        ? "Permanent upgrades: your weakest players swapped for better ones who are probably free agents."
+        ? (hasCats() ? "Permanent upgrades that help the categories you're close in or losing, from players who are probably free agents." : "Permanent upgrades: your weakest players swapped for better ones who are probably free agents.")
         : "Streams: swap a low-value player for someone with more games, then swap back later."}
         It can't see your league's rosters, so check Yahoo first. Tap <b>isn't available</b> to hide a player.</p>
       ${ms.length ? ms.map(moveCard).join("") : `<div class="list"><div class="empty">No clear upgrades right now. Your roster beats what's likely on waivers.</div></div>`}
@@ -2460,7 +2744,7 @@ def attach_cats(players, cat_players, keys, zfn):
             continue
         p["cat"] = {k: (round(c[k], 3) if isinstance(c.get(k), float) else c.get(k)) for k in keys if k in c}
         if p["q"]:
-            p["cz"] = zfn(p)
+            p["cr"] = zfn(p)
 
 
 def build(raw, season_id, min_gp, out_dir, today=None, open_browser=True, league=None):
@@ -2476,8 +2760,8 @@ def build(raw, season_id, min_gp, out_dir, today=None, open_browser=True, league
     sk_c, _ = build_skaters(raw, teams, min_gp, fp_fn=cm["sk_fn"])
     go_c, _ = build_goalies(raw, teams, min_gp, fp_fn=cm["g_fn"])
     pulse_cat = build_pulse(sk_c, go_c, week)
-    attach_cats(skaters, sk_c, SK_VALUE_KEYS, lambda p: cm["sk_z"](cm["cur"][p["id"]]))
-    attach_cats(goalies, go_c, G_VALUE_KEYS, lambda g: cm["g_z"](cm["gcur"][g["id"]], g["share"]))
+    attach_cats(skaters, sk_c, SK_VALUE_KEYS, lambda p: cm["sk_cr"](p["id"], p["pos"]))
+    attach_cats(goalies, go_c, G_VALUE_KEYS, lambda g: cm["g_cr"](g["id"]))
 
     my_teams = apply_league_file(load_league_file() if league is None else league, skaters, goalies)
     my_team = my_teams[0] if my_teams else {"roster": [], "ir": [], "version": ""}
@@ -2507,6 +2791,7 @@ def build(raw, season_id, min_gp, out_dir, today=None, open_browser=True, league
             "hasLast": bool(raw.get("lastSummary")), "hasRecent": bool(raw.get("recentSummary")),
             "hasSchedule": bool(raw.get("schedules")),
             "cats": {"sk": [CAT_LABELS[k] for k in SKATER_CATS], "g": [CAT_LABELS[k] for k in GOALIE_CATS]},
+            "catModel": cm["app"],
             "hasFaceoffs": bool(raw.get("faceoffs")), "maxTeams": MAX_TEAMS,
         },
         "skaters": slim(skaters),
@@ -2524,14 +2809,16 @@ def build(raw, season_id, min_gp, out_dir, today=None, open_browser=True, league
     for g in sorted([g for g in goalies if g["q"]], key=lambda x: x["projRank"])[:5]:
         log(f"{g['projRank']:>3}  {g['name'][:23]:<24}{g['team'][:5]:<6}{int(g['gs']):>4} GS"
             f"  {g['proj']:.2f}/start  {g['share']*100:.0f}% starts")
-    log(f"\nTop 12 skaters by projected cat points/game (categories mode), with best categories:")
+    log(f"\nTop 12 skaters by projected cat points/game (categories mode), with projected stats per game:")
     for p in sorted(q, key=lambda x: -x["cat"]["proj"])[:12]:
-        best = sorted(zip(SKATER_CATS, p.get("cz") or []), key=lambda t: -(t[1] or 0))[:3]
+        r_ = dict(zip(SK_RAW, p.get("cr") or [0] * len(SK_RAW)))
         log(f"     {p['name'][:23]:<24}{p['pos']:<4}{p['team'][:5]:<6}{p['cat']['proj']:>6.2f}  (FP {p['proj']:.2f}, FP rank {p['projRank']})"
-            f"  {' '.join(CAT_LABELS[k] + f'{z:+.1f}' for k, z in best)}")
+            f"  proj/gm G {r_['goals']:.2f} A {r_['assists']:.2f} SOG {r_['shots']:.1f} HIT {r_['hits']:.1f} FW {r_['totalFaceoffWins']:.1f}")
     log("Top 5 goalies by cat points per team game:")
     for g in sorted([g for g in goalies if g["q"]], key=lambda x: -x["cat"]["projTG"])[:5]:
-        log(f"     {g['name'][:23]:<24}{g['team'][:5]:<6}{g['cat']['projTG']:>6.2f}  (FP {g['projTG']:.2f})  {g['share']*100:.0f}% starts")
+        r_ = dict(zip(G_RAW, g.get("cr") or [0] * len(G_RAW)))
+        log(f"     {g['name'][:23]:<24}{g['team'][:5]:<6}{g['cat']['projTG']:>6.2f}  (FP {g['projTG']:.2f})  {g['share']*100:.0f}% starts"
+            f"  proj/start W {r_['wins']:.2f} GA {r_['goalsAgainst']:.2f} SV {r_['saves']:.1f} SA {r_['shotsAgainst']:.1f} TOI {r_['toiMin']:.0f}m")
     bad = [p["name"] for p in skaters + goalies if p["q"] and any(v is None for k, v in p["cat"].items() if k in ("proj", "rosFp", "vor"))]
     log(f"Category check: {len(bad)} ranked players missing values{': ' + ', '.join(bad[:5]) if bad else ''}")
     print_briefing(skaters, goalies, pulse, week, my_team)
