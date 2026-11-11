@@ -2524,6 +2524,16 @@ def build(raw, season_id, min_gp, out_dir, today=None, open_browser=True, league
     for g in sorted([g for g in goalies if g["q"]], key=lambda x: x["projRank"])[:5]:
         log(f"{g['projRank']:>3}  {g['name'][:23]:<24}{g['team'][:5]:<6}{int(g['gs']):>4} GS"
             f"  {g['proj']:.2f}/start  {g['share']*100:.0f}% starts")
+    log(f"\nTop 12 skaters by projected cat points/game (categories mode), with best categories:")
+    for p in sorted(q, key=lambda x: -x["cat"]["proj"])[:12]:
+        best = sorted(zip(SKATER_CATS, p.get("cz") or []), key=lambda t: -(t[1] or 0))[:3]
+        log(f"     {p['name'][:23]:<24}{p['pos']:<4}{p['team'][:5]:<6}{p['cat']['proj']:>6.2f}  (FP {p['proj']:.2f}, FP rank {p['projRank']})"
+            f"  {' '.join(CAT_LABELS[k] + f'{z:+.1f}' for k, z in best)}")
+    log("Top 5 goalies by cat points per team game:")
+    for g in sorted([g for g in goalies if g["q"]], key=lambda x: -x["cat"]["projTG"])[:5]:
+        log(f"     {g['name'][:23]:<24}{g['team'][:5]:<6}{g['cat']['projTG']:>6.2f}  (FP {g['projTG']:.2f})  {g['share']*100:.0f}% starts")
+    bad = [p["name"] for p in skaters + goalies if p["q"] and any(v is None for k, v in p["cat"].items() if k in ("proj", "rosFp", "vor"))]
+    log(f"Category check: {len(bad)} ranked players missing values{': ' + ', '.join(bad[:5]) if bad else ''}")
     print_briefing(skaters, goalies, pulse, week, my_team)
     log(f"\nSaved:\n  {os.path.abspath(html_path)}\n  {os.path.abspath(os.path.join(out_dir, 'skaters.csv'))}"
         f"\n  {os.path.abspath(os.path.join(out_dir, 'goalies.csv'))}")
